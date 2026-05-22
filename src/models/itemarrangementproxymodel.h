@@ -58,6 +58,8 @@ public:
     Q_INVOKABLE void updateFolderName(int folderId, const QString & name);
     Q_INVOKABLE void bringToFront(const QString & id);
     Q_INVOKABLE void commitDndOperation(const QString & dragId, const QString & dropId, const DndOperation op, int pageHint = -1);
+    Q_INVOKABLE void previewDndOperation(const QString & dragId, const QString & dropId, const DndOperation op, int pageHint = -1);
+    Q_INVOKABLE void persistArrangement();
     Q_INVOKABLE int creatEmptyPage(int folderId = 0) const;
     Q_INVOKABLE void removeEmptyPage() const;
 
@@ -78,6 +80,7 @@ private:
 
     void loadItemArrangementFromUserData();
     void saveItemArrangementToUserData();
+    bool performDndOperation(const QString &dragId, const QString &dropId, const DndOperation op, int pageHint, bool persist);
     std::tuple<int, int, int> findItem(const QString & id, bool searchTopLevelOnly = false) const;
     void onSourceModelChanged();
     void onFolderModelChanged();
@@ -92,4 +95,5 @@ private:
     ItemsPage * m_topLevel;
     QHash<QString, ItemsPage *> m_folders;
     QStandardItemModel m_folderModel;
+    bool m_arrangementDirty = false;
 };

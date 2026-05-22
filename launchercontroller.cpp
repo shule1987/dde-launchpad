@@ -7,6 +7,12 @@
 #include <QDir>
 #include <QTimer>
 #include <QSettings>
+#include <QProcess>
+#include <QRegularExpression>
+#include <QScreen>
+#include <QGuiApplication>
+#include <QKeyEvent>
+#include <QInputEvent>
 #include <QStandardPaths>
 #include <DGuiApplicationHelper>
 #include <QCommandLineParser>
@@ -21,6 +27,44 @@ DGUI_USE_NAMESPACE
 
 namespace {
 Q_LOGGING_CATEGORY(logController, "org.deepin.dde.launchpad.controller")
+
+qreal currentXrandrRefreshRate(const QString &screenName)
+{
+    QProcess xrandr;
+    xrandr.start(QStringLiteral("xrandr"), { QStringLiteral("--current") });
+    if (!xrandr.waitForFinished(500))
+        return 0;
+
+    const QString output = QString::fromLocal8Bit(xrandr.readAllStandardOutput());
+    const QStringList lines = output.split(u'\n');
+    const QRegularExpression connectedOutputRe(QStringLiteral("^([^\\s]+)\\s+connected\\b"));
+    const QRegularExpression activeRefreshRe(QStringLiteral("(\\d+(?:\\.\\d+)?)\\*"));
+
+    QString currentOutput;
+    qreal fallbackRate = 0;
+    for (const QString &line : lines) {
+        const QRegularExpressionMatch outputMatch = connectedOutputRe.match(line);
+        if (outputMatch.hasMatch()) {
+            currentOutput = outputMatch.captured(1);
+            continue;
+        }
+
+        const QRegularExpressionMatch refreshMatch = activeRefreshRe.match(line);
+        if (!refreshMatch.hasMatch())
+            continue;
+
+        const qreal rate = refreshMatch.captured(1).toDouble();
+        if (rate <= 0)
+            continue;
+
+        if (fallbackRate <= 0)
+            fallbackRate = rate;
+        if (!screenName.isEmpty() && currentOutput == screenName)
+            return rate;
+    }
+
+    return fallbackRate;
+}
 }
 
 LauncherController::LauncherController(QObject *parent)
@@ -31,6 +75,8 @@ LauncherController::LauncherController(QObject *parent)
     , m_launcher1Adaptor(new Launcher1Adaptor(this))
     , m_visible(false)
 {
+    qApp->installEventFilter(this);
+
     // TODO: settings should be managed in somewhere else.
     const QString settingBasePath(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation));
     const QString settingPath(QDir(settingBasePath).absoluteFilePath("settings.ini"));
@@ -38,6 +84,7 @@ LauncherController::LauncherController(QObject *parent)
 
     m_currentFrame = settings.value("current_frame", "WindowedFrame").toString();
     qCInfo(logController) << "Current frame mode:" << m_currentFrame;
+    refreshDisplayRefreshRate();
 
     // Interval set to 500=>1000ms for issue https://github.com/linuxdeepin/developer-center/issues/8137
     m_timer->setInterval(1000);
@@ -60,9 +107,9 @@ LauncherController::LauncherController(QObject *parent)
         parser.parse(args);
 
         if (parser.isSet(optShow)) {
-            setVisible(true);
+            Show();
         } else if (parser.isSet(optToggle)) {
-            setVisible(!visible());
+            Toggle();
         }
     });
 
@@ -84,11 +131,13 @@ void LauncherController::Exit()
 
 void LauncherController::Hide()
 {
+    updateSlowLaunchAnimationFromKeyboardModifiers();
     setVisible(false);
 }
 
 void LauncherController::Show()
 {
+    updateSlowLaunchAnimationFromKeyboardModifiers();
     setVisible(true);
 }
 
@@ -101,13 +150,7 @@ void LauncherController::ShowByMode(qlonglong in0)
 
 void LauncherController::Toggle()
 {
-    if (m_timer->isActive()) {
-        qDebug() << "hit";
-        m_pendingHide = false;
-        m_timer->stop();
-        return;
-    }
-    setVisible(!visible());
+    toggleFromDock();
 }
 
 LauncherController::~LauncherController()
@@ -120,11 +163,38 @@ bool LauncherController::visible() const
     return m_visible;
 }
 
+bool LauncherController::visibleLongerThan(qint64 milliseconds) const
+{
+    return m_visible && m_visibleTimer.isValid() && m_visibleTimer.elapsed() >= milliseconds;
+}
+
 void LauncherController::setVisible(bool visible)
 {
     if (visible == m_visible) return;
 
+    if (!visible
+            && m_inputFocusHideSuppressionValid
+            && m_inputFocusHideSuppressionTimer.isValid()
+            && m_inputFocusHideSuppressionTimer.elapsed() < m_inputFocusHideSuppressionMs) {
+        return;
+    }
+    if (m_inputFocusHideSuppressionValid
+            && (!m_inputFocusHideSuppressionTimer.isValid()
+                || m_inputFocusHideSuppressionTimer.elapsed() >= m_inputFocusHideSuppressionMs)) {
+        m_inputFocusHideSuppressionValid = false;
+    }
+
+    if (!visible) {
+        m_recentDockDeactivationHideTimer.start();
+        m_recentDockDeactivationHideValid = true;
+    }
+
     m_visible = visible;
+    if (m_visible) {
+        m_visibleTimer.start();
+    } else {
+        m_visibleTimer.invalidate();
+    }
 
     emit visibleChanged(m_visible);
 }
@@ -152,7 +222,7 @@ void LauncherController::setCurrentFrame(const QString &frame)
     m_currentFrame = frame;
     qDebug() << "set current frame:" << m_currentFrame;
     m_pendingHide = false;
-    m_timer->start();
+    m_timer->stop();
     emit currentFrameChanged();
 }
 
@@ -161,13 +231,105 @@ QString LauncherController::currentScreen() const
     return m_currentScreen;
 }
 
+qreal LauncherController::displayRefreshRate() const
+{
+    return m_displayRefreshRate;
+}
+
+bool LauncherController::slowLaunchAnimation() const
+{
+    return m_slowLaunchAnimation;
+}
+
+int LauncherController::animationSpeedScale() const
+{
+    return m_slowLaunchAnimation ? 10 : 1;
+}
+
+void LauncherController::setSlowLaunchAnimation(bool slow)
+{
+    if (m_slowLaunchAnimation == slow)
+        return;
+
+    m_slowLaunchAnimation = slow;
+    emit slowLaunchAnimationChanged();
+}
+
 void LauncherController::setCurrentScreen(const QString &screen)
 {
     if (m_currentScreen == screen) return;
 
     m_currentScreen = screen;
     qCInfo(logController) << "Current screen changed to:" << m_currentScreen;
+    refreshDisplayRefreshRate();
     emit currentScreenChanged();
+}
+
+void LauncherController::updateSlowLaunchAnimationFromKeyboardModifiers()
+{
+    setSlowLaunchAnimation(QGuiApplication::queryKeyboardModifiers().testFlag(Qt::ShiftModifier));
+}
+
+void LauncherController::suppressNextHideForInputFocus(int milliseconds)
+{
+    m_inputFocusHideSuppressionMs = qMax(1, milliseconds);
+    m_inputFocusHideSuppressionTimer.start();
+    m_inputFocusHideSuppressionValid = true;
+}
+
+bool LauncherController::eventFilter(QObject *watched, QEvent *event)
+{
+    switch (event->type()) {
+    case QEvent::KeyPress:
+    case QEvent::KeyRelease:
+    case QEvent::ShortcutOverride: {
+        auto *keyEvent = static_cast<QKeyEvent *>(event);
+        bool slow = keyEvent->modifiers().testFlag(Qt::ShiftModifier);
+        if (event->type() == QEvent::KeyPress && keyEvent->key() == Qt::Key_Shift) {
+            slow = true;
+        } else if (event->type() == QEvent::KeyRelease && keyEvent->key() == Qt::Key_Shift
+                   && !keyEvent->modifiers().testFlag(Qt::ShiftModifier)) {
+            slow = false;
+        }
+        setSlowLaunchAnimation(slow);
+        break;
+    }
+    case QEvent::MouseButtonPress:
+    case QEvent::MouseButtonRelease:
+    case QEvent::MouseButtonDblClick:
+    case QEvent::MouseMove:
+    case QEvent::Wheel:
+    case QEvent::TouchBegin:
+    case QEvent::TouchUpdate:
+    case QEvent::TouchEnd: {
+        auto *inputEvent = static_cast<QInputEvent *>(event);
+        setSlowLaunchAnimation(inputEvent->modifiers().testFlag(Qt::ShiftModifier));
+        break;
+    }
+    default:
+        break;
+    }
+
+    return QObject::eventFilter(watched, event);
+}
+
+void LauncherController::refreshDisplayRefreshRate()
+{
+    qreal refreshRate = 0;
+    for (QScreen *screen : qApp->screens()) {
+        if (screen && (m_currentScreen.isEmpty() || screen->name() == m_currentScreen)) {
+            refreshRate = qMax(refreshRate, screen->refreshRate());
+        }
+    }
+
+    refreshRate = qMax(refreshRate, currentXrandrRefreshRate(m_currentScreen));
+    refreshRate = qMax<qreal>(60, refreshRate);
+    if (qFuzzyCompare(m_displayRefreshRate, refreshRate))
+        return;
+
+    m_displayRefreshRate = refreshRate;
+    qCInfo(logController) << "Display refresh rate:" << m_displayRefreshRate;
+    emit displayRefreshRateChanged();
 }
 
 // We need to hide the launcher when it lost focus, but clicking the launcher icon on the taskbar/dock will also trigger
@@ -186,6 +348,67 @@ void LauncherController::hideWithTimer()
             setVisible(false);
         }
     }
+}
+
+void LauncherController::hideFromDockDeactivation()
+{
+    constexpr qint64 dockShowDeactivationGuardMs = 320;
+
+    if (!visible())
+        return;
+
+    if (m_recentDockShowValid && m_recentDockShowTimer.isValid()
+        && m_recentDockShowTimer.elapsed() < dockShowDeactivationGuardMs) {
+        return;
+    }
+
+    updateSlowLaunchAnimationFromKeyboardModifiers();
+    m_recentDockDeactivationHideTimer.start();
+    m_recentDockDeactivationHideValid = true;
+    setVisible(false);
+}
+
+void LauncherController::toggleFromDock()
+{
+    constexpr qint64 duplicateToggleGuardMs = 180;
+    constexpr qint64 deactivationToggleGuardMs = 320;
+
+    updateSlowLaunchAnimationFromKeyboardModifiers();
+
+    if (m_recentDockToggleValid && m_recentDockToggleTimer.isValid()
+        && m_recentDockToggleTimer.elapsed() < duplicateToggleGuardMs) {
+        return;
+    }
+
+    if (!visible() && m_recentDockDeactivationHideValid && m_recentDockDeactivationHideTimer.isValid()
+        && m_recentDockDeactivationHideTimer.elapsed() < deactivationToggleGuardMs) {
+        return;
+    }
+
+    m_recentDockToggleTimer.start();
+    m_recentDockToggleValid = true;
+
+    if (visible()) {
+        setVisible(false);
+        return;
+    }
+
+    m_recentDockDeactivationHideValid = false;
+    m_recentDockShowTimer.start();
+    m_recentDockShowValid = true;
+    setVisible(true);
+}
+
+void LauncherController::toggleFromPanelEdge()
+{
+    constexpr qint64 deactivationToggleGuardMs = 320;
+
+    if (!visible() && m_recentDockDeactivationHideValid && m_recentDockDeactivationHideTimer.isValid()
+        && m_recentDockDeactivationHideTimer.elapsed() < deactivationToggleGuardMs) {
+        return;
+    }
+
+    toggleFromDock();
 }
 
 void LauncherController::cancelHide()
@@ -231,4 +454,12 @@ void LauncherController::setCurrentFrameToWindowedFrame()
         setCurrentFrame("WindowedFrame");
         setVisible(true);
     });
+}
+
+void LauncherController::setCurrentFrameToFullscreenFrame()
+{
+    suppressNextHideForInputFocus(650);
+    cancelHide();
+    setCurrentFrame(QStringLiteral("FullscreenFrame"));
+    setVisible(true);
 }

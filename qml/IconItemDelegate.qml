@@ -30,9 +30,59 @@ Control {
     property bool dndEnabled: false
     property bool isDragHover: false
     readonly property bool isWindowedMode: LauncherController.currentFrame === "WindowedFrame"
+    readonly property real folderBackgroundRadius: dragAndfolderBackground.radius
     property alias displayFont: iconItemLabel.font
     property real iconScaleFactor: 1.0
     property bool iconIntroAnimRunning: false
+    property bool hoverVisualEnabled: true
+    property real labelOpacity: 1.0
+    property Item glassSourceItem: null
+    property real glassSampleRevision: 0
+    property bool dragImageReady: false
+    property bool proxyDragPending: false
+
+    function folderBackgroundRect(targetItem) {
+        const itemPos = iconContainer.mapToItem(targetItem, 0, 0)
+        return Qt.rect(itemPos.x, itemPos.y, iconContainer.width, iconContainer.height)
+    }
+
+    function folderBackgroundLocalRect() {
+        const itemPos = iconContainer.mapToItem(root, 0, 0)
+        return Qt.rect(itemPos.x, itemPos.y, iconContainer.width, iconContainer.height)
+    }
+
+    function appIconVisualLocalRect() {
+        const containerRect = folderBackgroundLocalRect()
+        const visualScale = Math.max(0.01, (iconContainer.width / root.maxIconSize) * root.iconScaleFactor)
+        const visualWidth = iconContainer.width * visualScale
+        const visualHeight = iconContainer.height * visualScale
+        return Qt.rect(
+            containerRect.x + (containerRect.width - visualWidth) / 2,
+            containerRect.y + (containerRect.height - visualHeight) / 2,
+            visualWidth,
+            visualHeight
+        )
+    }
+
+    function folderPreviewIconVisualRect(index, targetItem) {
+        const maxIconCount = 2
+        const spacing = 8
+        const itemWidth = Math.max(1, (iconContainer.width - ((maxIconCount + 1) * spacing)) / 2)
+        const itemHeight = Math.max(1, (iconContainer.height - ((maxIconCount + 1) * spacing)) / maxIconCount)
+        const column = index % maxIconCount
+        const row = Math.floor(index / maxIconCount)
+        const itemX = (column + 1) * spacing + column * itemWidth
+        const itemY = (row + 1) * spacing + row * itemHeight
+        const visualScale = Math.max(0.01, (itemWidth / root.maxIconSizeInFolder) * root.iconScaleFactor)
+        const visualWidth = itemWidth * visualScale
+        const visualHeight = itemHeight * visualScale
+        const itemPos = iconContainer.mapToItem(
+            targetItem,
+            itemX + (itemWidth - visualWidth) / 2,
+            itemY + (itemHeight - visualHeight) / 2
+        )
+        return Qt.rect(itemPos.x, itemPos.y, visualWidth, visualHeight)
+    }
 
     Accessible.name: iconItemLabel.text
 
@@ -55,7 +105,7 @@ Control {
     }
 
     contentItem: Button {
-        hoverEnabled: !root.iconIntroAnimRunning
+        hoverEnabled: root.hoverVisualEnabled && !root.iconIntroAnimRunning
         focusPolicy: Qt.NoFocus
         ColorSelector.pressed: false
         ColorSelector.family: D.Palette.CrystalColor
@@ -77,15 +127,15 @@ Control {
 
                 Rectangle {
                     id: dragAndfolderBackground
-                    visible: root.icons !== undefined || (root.isDragHover && !isWindowedMode)
+                    visible: root.glassSourceItem === null && opacity > 0
                     opacity: root.icons !== undefined || (root.isDragHover && !isWindowedMode) ? 1 : 0
                     scale:  (root.isDragHover && !isWindowedMode) ? 1.2 : 1
                     color: "#26FFFFFF"
                     Behavior on opacity {
-                        NumberAnimation { duration: 200; easing.type: Easing.OutQuad }
+                        NumberAnimation { duration: 200 * LauncherController.animationSpeedScale; easing.type: Easing.OutQuad }
                     }
                     Behavior on scale {
-                        NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+                        NumberAnimation { duration: 200 * LauncherController.animationSpeedScale; easing.type: Easing.OutCubic }
                     }
                     anchors.fill: parent
                     radius: 12
@@ -95,7 +145,7 @@ Control {
                         running: false
                         from: 1.2
                         to: 1
-                        duration: 200
+                        duration: 200 * LauncherController.animationSpeedScale
                         easing.type: Easing.OutCubic
                     }
 
@@ -103,6 +153,23 @@ Control {
                         if (root.icons !== undefined && dndItem.mergeAnimTargetIcon && dndItem.mergeAnimTargetIcon2) {
                             ininAni.start()
                         }
+                    }
+                }
+
+                FrostedGlassBackground {
+                    anchors.fill: parent
+                    visible: root.glassSourceItem !== null && opacity > 0
+                    opacity: root.icons !== undefined || (root.isDragHover && !isWindowedMode) ? 1 : 0
+                    scale: (root.isDragHover && !isWindowedMode) ? 1.2 : 1
+                    radius: dragAndfolderBackground.radius
+                    sourceItem: root.glassSourceItem
+                    sampleRevision: root.glassSampleRevision
+
+                    Behavior on opacity {
+                        NumberAnimation { duration: 200 * LauncherController.animationSpeedScale; easing.type: Easing.OutQuad }
+                    }
+                    Behavior on scale {
+                        NumberAnimation { duration: 200 * LauncherController.animationSpeedScale; easing.type: Easing.OutCubic }
                     }
                 }
 
@@ -118,31 +185,61 @@ Control {
                         hoverEnabled: false
                         drag.target: root.dndEnabled ? root : null
                         drag.threshold: 1
+
+                        function startProxyDragWhenReady() {
+                            if (!mouseArea.drag.active || dndItem.Drag.active) {
+                                return
+                            }
+                            if (!root.dragImageReady || root.Drag.imageSource === "") {
+                                root.proxyDragPending = true
+                                return
+                            }
+
+                            root.proxyDragPending = false
+                            dndItem.currentlyDraggedId = root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]
+                            dndItem.currentlyDraggedIconName = root.iconSource
+                            dndItem.Drag.hotSpot = root.Drag.hotSpot
+                            dndItem.Drag.mimeData = root.Drag.mimeData
+                            dndItem.mergeSize = Math.min(iconLoader.width, iconLoader.height)
+                            dndItem.Drag.imageSource = root.Drag.imageSource
+                            dndItem.Drag.dragType = root.Drag.Automatic
+                            Qt.callLater(function() {
+                                if (mouseArea.drag.active && dndItem.currentlyDraggedId === root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]) {
+                                    dndItem.Drag.active = true
+                                }
+                            })
+                        }
+
                         onPressed: function (mouse) {
                             if (mouse.button === Qt.LeftButton && root.dndEnabled) {
+                                root.dragImageReady = false
+                                root.proxyDragPending = false
+                                root.Drag.imageSource = ""
                                 root.Drag.hotSpot = mapToItem(iconLoader, Qt.point(mouse.x, mouse.y))
                                 iconLoader.grabToImage(function(result) {
-                                    root.Drag.imageSource = result.url;
+                                    root.Drag.imageSource = result.url
+                                    root.dragImageReady = true
+                                    if (root.proxyDragPending || mouseArea.drag.active) {
+                                        mouseArea.startProxyDragWhenReady()
+                                    }
                                 })
                             }
                         }
                         drag.onActiveChanged: function() {
                             if (drag.active) {
-                                dndItem.currentlyDraggedId = root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]
-                                dndItem.currentlyDraggedIconName = root.iconSource
-                                dndItem.Drag.hotSpot = root.Drag.hotSpot
-                                dndItem.Drag.mimeData = root.Drag.mimeData
-                                dndItem.mergeSize = Math.min(iconLoader.width, iconLoader.height)
-                                dndItem.Drag.imageSource = root.Drag.imageSource
-                                dndItem.Drag.dragType = root.Drag.Automatic
-                                // Defer the drag start to avoid running a nested event loop
-                                // (QDrag::exec) inside this signal handler. If the delegate
-                                // gets destroyed during the drag (page switch / folder close),
-                                // Qt would otherwise abort because the MouseArea's handler is
-                                // still on the call stack.
-                                Qt.callLater(function() {
-                                    dndItem.Drag.active = true
-                                })
+                                if (typeof suppressAutoHide === "function") {
+                                    suppressAutoHide()
+                                } else {
+                                    LauncherController.cancelHide()
+                                }
+                                startProxyDragWhenReady()
+                            } else {
+                                root.proxyDragPending = false
+                                if (!dndItem.Drag.active
+                                        && dndItem.currentlyDraggedId === root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]) {
+                                    dndItem.currentlyDraggedId = ""
+                                    dndItem.currentlyDraggedIconName = ""
+                                }
                             }
                         }
                         onClicked: function(mouse) {
@@ -231,21 +328,21 @@ Control {
                                         property: "scale"
                                         from: folderIcon.introScale
                                         to: (itemWidth / root.maxIconSizeInFolder) * root.iconScaleFactor
-                                        duration: 600
+                                        duration: 600 * LauncherController.animationSpeedScale
                                         easing.type: Easing.OutExpo
                                     }
                                     NumberAnimation {
                                         target: folderIcon
                                         property: "x"
                                         from: folderIcon.iconCenterX; to: iconItem.getItemX(index)
-                                        duration: 800
+                                        duration: 800 * LauncherController.animationSpeedScale
                                         easing.type: Easing.OutExpo
                                     }
                                     NumberAnimation {
                                         target: folderIcon
                                         property: "y"
                                         from: folderIcon.iconCenterY; to: iconItem.getItemY(index)
-                                        duration: 800
+                                        duration: 800 * LauncherController.animationSpeedScale
                                         easing.type: Easing.OutExpo
                                     }
 
@@ -325,6 +422,7 @@ Control {
                 property bool isNewlyInstalled: model.lastLaunchedTime === 0 && model.installedTime !== 0
                 id: iconItemLabel
                 visible: !root.isDragHover
+                opacity: root.labelOpacity
                 text: isNewlyInstalled ? ("<font color='#669DFF' size='1' style='text-shadow: 0 0 1px rgba(255,255,255,0.1)'>●</font>&nbsp;&nbsp;" + root.text) : root.text
                 textFormat: isNewlyInstalled ? Text.StyledText : Text.PlainText
                 width: parent.width

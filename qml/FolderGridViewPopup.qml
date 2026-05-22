@@ -6,7 +6,9 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import QtQuick.Window 2.15
+import QtQuick.Effects
 import org.deepin.dtk 1.0
+import org.deepin.dtk 1.0 as D
 import org.deepin.dtk.style 1.0 as DStyle
 
 import org.deepin.launchpad 1.0
@@ -20,6 +22,8 @@ Popup {
     property alias innerItem: folderLoader.item
     property alias folderName: folderLoader.folderName
     property var currentDragItem: null
+    property Item backgroundSourceItem: null
+    property real contentRevealProgress: 0
 
 
 
@@ -45,6 +49,8 @@ Popup {
     focus: true
     // visible: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+    transformOrigin: Item.Center
+    popupType: isWindowedMode ? Popup.Window : Popup.Item
 
     property int cs: 110 // * 5 / 4
     // anchors.centerIn: parent // seems dtkdeclarative's Popup doesn't have anchors.centerIn
@@ -57,13 +63,18 @@ Popup {
     // 获取当前屏幕的 DPR，用于物理像素对齐
     property real dpr: Screen.devicePixelRatio
 
-    x: Math.round((centerPosition.x - (width / 2)) * dpr) / dpr
-    y: Math.round((centerPosition.y - (height / 2)) * dpr) / dpr
+    function animationDuration(milliseconds) {
+        return Math.max(1, Math.round(milliseconds * LauncherController.animationSpeedScale))
+    }
+
+    x: centerPosition.x - (width / 2)
+    y: centerPosition.y - (height / 2)
 
     onClosed: {
         // reset folder view
         folderLoader.currentFolderId = -1
         currentDragItem = null
+        contentRevealProgress = 0
     }
 
     Loader {
@@ -99,6 +110,9 @@ Popup {
                     id: contentRoot
                     anchors.fill: parent
                     spacing: isWindowedMode ? 0 : 5
+                    opacity: root.isWindowedMode ? 1 : root.contentRevealProgress
+                    scale: root.isWindowedMode ? 1 : (0.96 + root.contentRevealProgress * 0.04)
+                    transformOrigin: Item.Center
 
                     property bool nameEditing: false
                     property alias folderName: folderNameEdit.text
@@ -387,7 +401,7 @@ Popup {
                                         property Transition itemMove: Transition {
                                             NumberAnimation {
                                                 properties: "x,y"
-                                                duration: 200
+                                                duration: root.animationDuration(200)
                                                 easing.type: Easing.OutQuad
                                             }
                                         }
@@ -697,7 +711,7 @@ Popup {
 
                         radius: width / 2
                         color: Qt.rgba(255, 255, 255, index === folderPageIndicator.currentIndex ? 0.9 : pressed ? 0.5 : 0.2)
-                        Behavior on opacity { OpacityAnimator { duration: 100 } }
+                        Behavior on opacity { OpacityAnimator { duration: root.animationDuration(100) } }
                         OutsideBoxBorder {
                             anchors.fill: parent
                             radius: parent.radius
@@ -711,17 +725,58 @@ Popup {
     }
     }
     background: Item {
+        anchors.fill: parent
+
+        Item {
+            id: fullscreenBlurLayer
+            anchors.fill: parent
+            visible: !root.isWindowedMode && !D.DTK.isSoftwareRender
+
+            InWindowBlur {
+                id: fullscreenBlur
+                anchors.fill: parent
+                radius: 36
+                offscreen: true
+            }
+
+            ItemViewport {
+                id: fullscreenBlurViewport
+                anchors.fill: fullscreenBlur
+                fixed: true
+                sourceItem: fullscreenBlur
+                radius: root.isWindowedMode ? 12 : 24
+                hideSource: false
+            }
+
+            MultiEffect {
+                anchors.fill: fullscreenBlurViewport
+                source: fullscreenBlurViewport
+                autoPaddingEnabled: false
+                saturation: 0.5
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                radius: root.isWindowedMode ? 12 : 24
+                color: Qt.rgba(0, 0, 0, 0.20)
+                antialiasing: true
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.10)
+            }
+        }
+
         FloatingPanel {
             anchors.fill: parent
-            radius: isWindowedMode ? 12 : 36
+            visible: root.isWindowedMode || D.DTK.isSoftwareRender
+            radius: root.isWindowedMode ? 12 : 36
             blurMultiplier: 5.0
             backgroundColor: Palette {
                 normal: Qt.rgba(1.0, 1.0, 1.0, 0.2)
-                normalDark: isWindowedMode ? Qt.rgba(20/255, 20/255, 20/255, 0.4) : Qt.rgba(1.0, 1.0, 1.0, 0.2)
+                normalDark: root.isWindowedMode ? Qt.rgba(20/255, 20/255, 20/255, 0.4) : Qt.rgba(1.0, 1.0, 1.0, 0.2)
             }
             dropShadowColor: null
-            outsideBorderColor: isWindowedMode ? windowedOutBorderPalette : null
-            insideBorderColor: isWindowedMode ? DStyle.Style.floatingPanel.insideBorder : null
+            outsideBorderColor: root.isWindowedMode ? windowedOutBorderPalette : null
+            insideBorderColor: root.isWindowedMode ? DStyle.Style.floatingPanel.insideBorder : null
         }
 
         DropArea {

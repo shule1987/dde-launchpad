@@ -29,6 +29,7 @@ FocusScope {
     required property int columns
     required property int rows
     property real paddingColumns: 0
+    property real paddingRows: paddingColumns
     property alias cellHeight: item.cellHeight
     property alias cellWidth: item.cellWidth
 
@@ -59,7 +60,9 @@ FocusScope {
         visible: true
         anchors.fill: parent
 
-        property int cellHeight: root.rows == 0 ? (width / (root.columns + root.paddingColumns * 2)) : Math.min(width / (root.columns + root.paddingColumns * 2), height / root.rows)
+        property int cellHeight: root.rows == 0
+            ? (width / (root.columns + root.paddingColumns * 2))
+            : Math.min(width / (root.columns + root.paddingColumns * 2), height / Math.max(1, root.rows + root.paddingRows * 2))
         property int cellWidth: cellHeight
         Rectangle {
             anchors.centerIn: parent
@@ -72,7 +75,7 @@ FocusScope {
             }
             height: {
                 if (root.objectName === "folderGridViewContainer") {
-                    return item.cellHeight * root.rows + root.paddingColumns * Math.max(0, root.rows - 1)
+                    return item.cellHeight * root.rows + root.paddingRows * Math.max(0, root.rows - 1)
                 } else {
                     return root.rows == 0 ? parent.height : (item.cellHeight * root.rows)
                 }
@@ -88,7 +91,7 @@ FocusScope {
                 clip: true
                 highlightFollowsCurrentItem: true
                 keyNavigationEnabled: true
-                highlightMoveDuration: 100
+                highlightMoveDuration: 100 * LauncherController.animationSpeedScale
                 activeFocusOnTab: focus ? root.activeGridViewFocusOnTab : false
                 focus: count > 0
                 onActiveFocusChanged: {
@@ -130,10 +133,11 @@ FocusScope {
                     }
                 }
 
-                // working (on drag into folder):
-                displaced: root.itemMove
-                // not wroking
+                // Keep item reflow smooth during drag-reorder and folder insert/remove.
+                add: root.itemMove
                 move: root.itemMove
+                remove: root.itemMove
+                displaced: root.itemMove
                 moveDisplaced: root.itemMove
             }
         }

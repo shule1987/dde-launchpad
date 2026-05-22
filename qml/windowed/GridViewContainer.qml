@@ -65,7 +65,7 @@ FocusScope {
 
             interactive: false
             highlightFollowsCurrentItem: true
-            highlightMoveDuration: 100
+            highlightMoveDuration: 100 * LauncherController.animationSpeedScale
             keyNavigationEnabled: true
             activeFocusOnTab: focus ? root.activeGridViewFocusOnTab : false
             focus: count > 0

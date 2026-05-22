@@ -2,24 +2,137 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//import QtCore
-import QtQml.Models 2.15
 import QtQuick 2.15
-import QtQuick.Layouts 1.15
 import QtQuick.Controls 2.15
 import QtQuick.Window 2.15
 import org.deepin.dtk 1.0
-import org.deepin.dtk.style 1.0 as DS
 
 import org.deepin.launchpad 1.0
 import org.deepin.launchpad.models 1.0
-import 'windowed' as WindowedLaunchpad
 
 InputEventItem {
+    id: root
     anchors.fill: parent
     objectName: "FullscreenFrame-InputEventItem"
-    inputMethodSource: searchEdit
+    inputMethodSource: footer.searchEdit
     focus: true
+
+    property bool dockAreaReservedByWindow: false
+    property alias launchAnimationViewportItem: reservedViewport
+    property alias launchAnimationBackdropItem: launchAnimationBackdrop
+    property alias launchAnimationForegroundItem: launchAnimationForegroundContent
+    property alias launchAnimationForegroundScale: launchAnimationScale
+    property var launchAnimationForegroundSnapshotItem: null
+    property int iconGridMotionSerial: 0
+    property bool iconGridMotionHiding: false
+    property int iconGridMotionSpeedScale: 1
+    property int glassSampleRevision: 0
+    readonly property bool launcherDragActive: dndItem.currentlyDraggedId !== "" || dndItem.Drag.active
+    readonly property real footerBlankTop: footer ? footer.y : 0
+    readonly property real footerBlankHeight: footer ? footer.height : 0
+    readonly property rect footerSearchRect: footer
+        ? Qt.rect(
+            (width - footer.searchEdit.width) / 2,
+            footer.y + (footer.height - footer.searchEdit.height) / 2,
+            footer.searchEdit.width,
+            footer.searchEdit.height
+        )
+        : Qt.rect(0, 0, 0, 0)
+
+    function pointInRect(point, rect) {
+        return point.x >= rect.x
+            && point.x <= rect.x + rect.width
+            && point.y >= rect.y
+            && point.y <= rect.y + rect.height
+    }
+
+    function searchEditRectInCanvas() {
+        if (!footer || !footer.searchEdit || !fullscreenCanvas) {
+            return Qt.rect(0, 0, 0, 0)
+        }
+
+        const topLeft = footer.searchEdit.mapToItem(fullscreenCanvas, 0, 0)
+        return Qt.rect(topLeft.x, topLeft.y, footer.searchEdit.width, footer.searchEdit.height)
+    }
+
+    function hideLauncherFromBlankPress(position) {
+        if (DebugHelper.avoidHideWindow || folderGridViewPopup.visible) {
+            return
+        }
+
+        const canvasOrigin = fullscreenCanvas.mapToItem(root, 0, 0)
+        const canvasRect = Qt.rect(canvasOrigin.x, canvasOrigin.y,
+                                   fullscreenCanvas.width, fullscreenCanvas.height)
+        if (!pointInRect(position, canvasRect)) {
+            LauncherController.visible = false
+            return
+        }
+
+        const p = fullscreenCanvas.mapFromItem(root, position.x, position.y)
+        const searchRect = searchEditRectInCanvas()
+        const exitRect = Qt.rect(fullscreenCanvas.width - 30 - 40, 30, 40, 40)
+
+        if (p.y >= footer.y && p.y <= footer.y + footer.height && !pointInRect(p, searchRect)) {
+            LauncherController.visible = false
+            return
+        }
+
+        if (p.y >= header.y && p.y <= header.y + header.height && !pointInRect(p, exitRect)) {
+            LauncherController.visible = false
+        }
+    }
+
+    onPointerPressed: function(position, button, modifiers) {
+        if (button === Qt.LeftButton) {
+            hideLauncherFromBlankPress(position)
+        }
+    }
+
+    function activateLauncherInput() {
+        forceActiveFocus(Qt.ActiveWindowFocusReason)
+        activateWindowForInput()
+    }
+
+    function refreshGlassSnapshot() {
+        blurSceneSnapshot.scheduleUpdate()
+    }
+
+    function refreshGlassSamples() {
+        glassSampleRevision += 1
+    }
+
+    function refreshGlassSnapshotAfterSettled() {
+        refreshGlassSamples()
+        refreshGlassSnapshot()
+        glassSnapshotSettledRefreshTimer.restart()
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        z: -100
+        acceptedButtons: Qt.LeftButton
+        enabled: !folderGridViewPopup.visible
+        onClicked: {
+            if (!DebugHelper.avoidHideWindow) {
+                LauncherController.visible = false
+            }
+        }
+    }
+
+    Timer {
+        id: inputActivationTimer
+        interval: 50
+        repeat: false
+        onTriggered: {
+            if (root.Window.window && root.Window.window.visible) {
+                root.activateLauncherInput()
+            }
+        }
+    }
+
+    Component.onCompleted: {
+        inputActivationTimer.restart()
+    }
 
     property Palette appTextColor: Palette {
         normal {
@@ -32,26 +145,33 @@ InputEventItem {
         }
     }
 
-    // ----------- Drag and Drop related functions START -----------
+    property Palette pageButtonIconColor: Palette {
+        normal {
+            common: Qt.rgba(1, 1, 1, 1)
+            crystal: Qt.rgba(1, 1, 1, 1)
+        }
+        normalDark {
+            common: Qt.rgba(1, 1, 1, 1)
+            crystal: Qt.rgba(1, 1, 1, 1)
+        }
+    }
+
     Label {
-        property string currentlyDraggedId
-        property string currentlyDraggedIconName
-
-        property bool mergeAnimPending: false
-        //被拖拽图标
-        property string mergeAnimTargetIcon: ""
-        //放下的图标或文件夹
-        property string mergeAnimTargetIcon2: ""
-        // 鼠标松手位置（窗口坐标）
-        property real mergeAnimStartX: 0
-        property real mergeAnimStartY: 0
-
-        property real mergeSize: 0
-        signal dragEnded()
-
         id: dndItem
         visible: DebugHelper.qtDebugEnabled
         text: "DnD DEBUG"
+
+        property string currentlyDraggedId
+        property string currentlyDraggedIconName
+        property bool mergeAnimPending: false
+        property string mergeAnimTargetIcon: ""
+        property string mergeAnimTargetIcon2: ""
+        property real mergeAnimStartX: 0
+        property real mergeAnimStartY: 0
+        property string liveReorderKey: ""
+        property real mergeSize: 0
+
+        signal dragEnded()
 
         Drag.onActiveChanged: {
             if (Drag.active) {
@@ -59,855 +179,726 @@ InputEventItem {
             } else {
                 currentlyDraggedId = ""
                 currentlyDraggedIconName = ""
+                liveReorderKey = ""
                 dragEnded()
             }
         }
-    }
-
-    function dropOnItem(dragId, dropId, op) {
-        dndItem.text = "drag " + dragId + " onto " + dropId + " with " + op
-        ItemArrangementProxyModel.commitDndOperation(dragId, dropId, op)
     }
 
     function dropOnPage(dragId, dropFolderId, pageNumber) {
         dndItem.text = "drag " + dragId + " into " + dropFolderId + " at page " + pageNumber
         ItemArrangementProxyModel.commitDndOperation(dragId, dropFolderId, ItemArrangementProxyModel.DndJoin, pageNumber)
     }
-    // ----------- Drag and Drop related functions  END  -----------
 
-    Control {
-        id: baseLayer
-        visible: true
+    function decrementPageIndex(pages) {
+        if (pages.currentIndex !== 0 || pages.count <= 1) {
+            pages.decrementCurrentIndex()
+        }
+        if (typeof closeContextMenu === "function") {
+            closeContextMenu()
+        }
+    }
+
+    function incrementPageIndex(pages) {
+        if (pages.currentIndex !== pages.count - 1 || pages.count <= 1) {
+            pages.incrementCurrentIndex()
+        }
+        if (typeof closeContextMenu === "function") {
+            closeContextMenu()
+        }
+    }
+
+    readonly property bool isHorizontalDock: DesktopIntegration.dockPosition === Qt.UpArrow
+                                            || DesktopIntegration.dockPosition === Qt.DownArrow
+    readonly property real dockReserve: (
+        (isHorizontalDock ? DesktopIntegration.dockGeometry.height : DesktopIntegration.dockGeometry.width)
+        / Screen.devicePixelRatio
+        + DesktopIntegration.dockSpacing
+    )
+    readonly property real reservedLeftInset: 0
+    readonly property real reservedRightInset: 0
+    readonly property real reservedTopInset: 0
+    readonly property real reservedBottomInset: 0
+
+    Item {
+        id: reservedViewport
         anchors.fill: parent
-        focus: true
-        objectName: "FullscreenFrame-BaseLayer"
-        
-        property real iconScaleFactor: DesktopIntegration.iconScaleFactor
-        
-        Behavior on iconScaleFactor {
-            NumberAnimation {
-                duration: 200
-                easing.type: Easing.OutQuad
-            }
-        }
+        anchors.leftMargin: reservedLeftInset
+        anchors.rightMargin: reservedRightInset
+        anchors.topMargin: reservedTopInset
+        anchors.bottomMargin: reservedBottomInset
+        clip: true
 
-        Shortcut {
-            context: Qt.ApplicationShortcut
-            sequences: [StandardKey.HelpContents, "F1"]
-            onActivated: LauncherController.showHelp()
-            onActivatedAmbiguously: LauncherController.showHelp()
-        }
-
-        Shortcut {
-            context: Qt.ApplicationShortcut
-            sequences: ["Ctrl++", "Ctrl+="]
-            onActivated: baseLayer.increaseIconScale()
-        }
-
-        Shortcut {
-            context: Qt.ApplicationShortcut
-            sequences: ["Ctrl+-"]
-            onActivated: baseLayer.decreaseIconScale()
-        }
-
-        readonly property bool isHorizontalDock: DesktopIntegration.dockPosition === Qt.UpArrow || DesktopIntegration.dockPosition === Qt.DownArrow
-        readonly property int dockSpacing: (isHorizontalDock ? DesktopIntegration.dockGeometry.height : DesktopIntegration.dockGeometry.width) / Screen.devicePixelRatio
-
-        leftPadding: (DesktopIntegration.dockPosition === Qt.LeftArrow ? dockSpacing : 0)
-        rightPadding: (DesktopIntegration.dockPosition === Qt.RightArrow ? dockSpacing : 0)
-        topPadding: (DesktopIntegration.dockPosition === Qt.UpArrow ? dockSpacing : 0) + 20
-        bottomPadding: (DesktopIntegration.dockPosition === Qt.DownArrow ? dockSpacing : 0) + 20
-
-        property Palette textColor: appTextColor
-        palette.windowText: ColorSelector.textColor
-
-        function increaseIconScale() {
-            if (DesktopIntegration.iconScaleFactor < 1.0) {
-                DesktopIntegration.iconScaleFactor = Math.min(DesktopIntegration.iconScaleFactor + 0.1, 1.0)
-            }
-        }
-
-        function decreaseIconScale() {
-            if (DesktopIntegration.iconScaleFactor > 0.5) {
-                DesktopIntegration.iconScaleFactor = Math.max(DesktopIntegration.iconScaleFactor - 0.1, 0.5)
-            }
-        }
-
-        function tryToRemoveEmptyPage() {
-            ItemArrangementProxyModel.removeEmptyPage()
-        }
-
-        DropArea {
-            id: dropArea
-            property int pageIntent: 0
-            readonly property real paddingColumns: 0.5
-            readonly property int horizontalPadding:  searchResultGridViewContainer.cellWidth * paddingColumns
+        Item {
+            id: blurSceneSource
             anchors.fill: parent
-            z: -1
 
-            property bool createdEmptyPage: false
-            function checkDragMove() {
-                if (drag.x < horizontalPadding) {
-                    pageIntent = -1
-                } else if (drag.x > (width - searchResultGridViewContainer.cellWidth)) {
-                    let isLastPage = listviewPage.currentIndex === listviewPage.count - 1
-                    if (isLastPage && dropArea.createdEmptyPage) {
-                        return
-                    }
-                    pageIntent = 1
-                } else {
-                    pageIntent = 0
-                }
-            }
-
-            keys: ["text/x-dde-launcher-dnd-desktopId"]
-            onEntered: {
-                if (folderGridViewPopup.opened) {
-                    folderGridViewPopup.close()
-                }
-            }
-            onPositionChanged: {
-                checkDragMove()
-            }
-            onDropped: (drop) => {
-                           // drop over the left or right boundary of the page, do nothing
-                           if (pageIntent !== 0) {
-                               pageIntent = 0
-                               return
-                           }
-                           // drop into current page
-                           let dragId = drop.getDataAsString("text/x-dde-launcher-dnd-desktopId")
-                           dropOnPage(dragId, "internal/folders/0", listviewPage.currentIndex)
-                           pageIntent = 0
-                       }
-            onExited: {
-                pageIntent = 0
-            }
-            onPageIntentChanged: {
-                if (pageIntent !== 0) {
-                    dndMovePageTimer.restart()
-                } else {
-                    dndMovePageTimer.stop()
-                }
-            }
-
-            Timer {
-                id: dndMovePageTimer
-                interval: 1000
-                onTriggered: {
-                    if (parent.pageIntent > 0) {
-                        let isLastPage = listviewPage.currentIndex === listviewPage.count - 1
-                        if (isLastPage && !dropArea.createdEmptyPage) {
-                            let newPageIndex = ItemArrangementProxyModel.creatEmptyPage()
-                            dropArea.createdEmptyPage = true
-                            listviewPage.setCurrentIndex(newPageIndex)
-                            parent.pageIntent = 0
-                            return
-                        } else {
-                            incrementPageIndex(listviewPage)
-                        }
-                    } else if (parent.pageIntent < 0) {
-                        decrementPageIndex(listviewPage)
-                    }
-
-                    parent.pageIntent = 0
-                    if (listviewPage.currentIndex !== 0) {
-                        parent.checkDragMove()
-                    }
-                }
-            }
-
-            Connections {
-                target: dndItem
-                function onDragEnded() {
-                    if (dropArea.createdEmptyPage) {
-                        baseLayer.tryToRemoveEmptyPage()
-                        dropArea.createdEmptyPage = false
-                    }
-                }
-            }
-        }
-
-        Timer {
-            id: flipPageDelay
-            interval: 400
-            repeat: false
-        }
-
-        background: Image {
-            source: DesktopIntegration.isTreeLand() ? undefined : DesktopIntegration.backgroundUrl
-            sourceSize: Qt.size(width / 3, height / 3)
-
-            Rectangle {
+            Item {
+                id: launchAnimationBackdrop
                 anchors.fill: parent
-                color: folderGridViewPopup.visible ? Qt.rgba(0, 0, 0, 0.6)
-                                                   : DesktopIntegration.isTreeLand()
-                                                       ? "transparent"
-                                                       : Qt.rgba(0, 0, 0, 0.5)
 
-                MouseArea {
+                Image {
+                    id: fullscreenBackground
                     anchors.fill: parent
-                    scrollGestureEnabled: false
-                    enabled: !folderGridViewPopup.visible
-                    onClicked: {
-                        if (!DebugHelper.avoidHideWindow) {
-                            LauncherController.visible = false
-                        }
-                    }
-                    // TODO: this might not be the correct way to handle wheel
-                    onWheel: function(wheel) {
-                        // Handle Ctrl+Wheel for icon scaling
-                        if (wheel.modifiers & Qt.ControlModifier) {
-                            let yDelta = wheel.angleDelta.y / 8
-                            if (yDelta > 0) {
-                                // Scroll up with Ctrl: increase icon size
-                                baseLayer.increaseIconScale()
-                            } else if (yDelta < 0) {
-                                // Scroll down with Ctrl: decrease icon size
-                                baseLayer.decreaseIconScale()
-                            }
-                            return
-                        }
-                        
-                        // Normal wheel behavior: page switching
-                        if (flipPageDelay.running) return
-                        let xDelta = wheel.angleDelta.x / 8
-                        let yDelta = wheel.angleDelta.y / 8
-                        let toPage = 0; // -1 prev, +1 next, 0 don't change
-                        if (yDelta !== 0) {
-                            toPage = (yDelta > 0) ? -1 : 1
-                        } else if (xDelta !== 0) {
-                            toPage = (xDelta > 0) ? 1 : -1
-                        }
-                        if (toPage < 0) {
-                            flipPageDelay.start()
-                            if (!searchEdit.focus) { // reset keyboard focus when using mouse to flip page, but keep searchEdit focus
-                                baseLayer.focus = true
-                            }
-                            listviewPage.changedByNonKeyboard = true
-                            decrementPageIndex(listviewPage)
-                        } else if (toPage > 0) {
-                            flipPageDelay.start()
-                            if (!searchEdit.focus) { // reset keyboard focus when using mouse to flip page, but keep searchEdit focus
-                                baseLayer.focus = true
-                            }
-                            listviewPage.changedByNonKeyboard = true
-                            incrementPageIndex(listviewPage)
-                        }
-                    }
+                    source: DesktopIntegration.isTreeLand() ? undefined : DesktopIntegration.backgroundUrl
+                    sourceSize: Qt.size(
+                        Math.max(1, Math.ceil(width * Screen.devicePixelRatio)),
+                        Math.max(1, Math.ceil(height * Screen.devicePixelRatio))
+                    )
                 }
-            }
-        }
 
-        contentItem: ColumnLayout {
-
-            Control {
-                Layout.fillWidth: true
-                Layout.fillHeight: false
-
-                leftPadding: 20
-                rightPadding: 20
-
-                contentItem: Rectangle {
-                    id: fullscreenHeader
-                    implicitHeight: exitFullscreenBtn.height
-                    opacity: folderGridViewPopup.visible ? 0.4 : 1
-                    color: "transparent"
-
-                    ToolButton {
-                        id: exitFullscreenBtn
-                        Accessible.name: "Exit fullscreen"
-                        anchors.right: fullscreenHeader.right
-                        ColorSelector.family: Palette.CrystalColor
-                        icon.name: "launcher_exit_fullscreen"
-                        ToolTip.visible: hovered
-                        ToolTip.delay: 500
-                        ToolTip.text: qsTr("Window Mode")
-                        background: WindowedLaunchpad.ItemBackground {
-                            button: exitFullscreenBtn
-                        }
-                        onClicked: {
-                            searchEdit.text = ""
-                            LauncherController.setCurrentFrameToWindowedFrame()
-                        }
-                    }
-
-                    PageIndicator {
-                        id: indicator
-
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        anchors.verticalCenter: parent.verticalCenter
-                        visible: count !== 1
-                        count: searchResultGridViewContainer.visible ? 1 : listviewPage.count
-                        currentIndex: searchResultGridViewContainer.visible ? 1 : listviewPage.currentIndex
-                        interactive: true
-                        spacing: 10
-                        delegate: Rectangle {
-                            width: 8
-                            height: 8
-
-                            radius: width / 2
-                            color: Qt.rgba(255, 255, 255, index === indicator.currentIndex ? 0.9 : pressed ? 0.5 : 0.2)
-                            OutsideBoxBorder {
-                                anchors.fill: parent
-                                radius: parent.radius
-                                width: 1
-                                color: Qt.rgba(0, 0, 0, 0.1)
-                            }
-                        }
-                        onCurrentIndexChanged: {
-                            if (listviewPage.currentIndex !== currentIndex) {
-                                listviewPage.changedByNonKeyboard = true
-                            }
-                        }
-                    }
+                Rectangle {
+                    anchors.fill: fullscreenBackground
+                    readonly property real folderBackdropOpacity: 0.2 * folderGridViewPopup.externalDimProgress
+                    color: Qt.rgba(0, 0, 0, folderBackdropOpacity)
                 }
             }
 
             Item {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
+                id: launchAnimationForegroundContent
+                width: parent.width
+                height: parent.height
+                x: 0
+                y: 0
+                transform: [
+                    Scale {
+                        id: launchAnimationScale
+                        origin.x: 0
+                        origin.y: 0
+                        xScale: 1
+                        yScale: 1
+                    }
+                ]
 
-                ItemsPageModel {
-                    id: itemPageModel
-                    sourceModel: ItemArrangementProxyModel
-                }
-
-                ListView {
-                    id: listviewPage
-
+                Control {
+                    id: baseLayer
                     anchors.fill: parent
-                    snapMode: ListView.SnapOneItem
-                    orientation: ListView.Horizontal
-                    highlightRangeMode: ListView.StrictlyEnforceRange
-                    highlightFollowsCurrentItem: true
-                    highlightMoveDuration: 200
-                    highlightMoveVelocity: -1
-                    cacheBuffer: width * 2
-
-                    activeFocusOnTab: true
+                    visible: true
                     focus: true
-                    visible: searchEdit.text === ""
-                    interactive: !folderGridViewPopup.visible && dndItem.currentlyDraggedId === ""
+                    objectName: "FullscreenFrame-BaseLayer"
 
-                    currentIndex: indicator.currentIndex
+                    property real iconScaleFactor: DesktopIntegration.iconScaleFactor
+                    property Palette textColor: appTextColor
 
-                    property bool isDragging: false
+                    readonly property real viewportWidth: width - leftPadding - rightPadding
+                    readonly property real viewportHeight: height - topPadding - bottomPadding
+                    readonly property real gridUnitWidth: viewportWidth / 8
+                    readonly property real gridUnitHeight: viewportHeight / 5
+                    readonly property real iconCellWidth: gridUnitWidth
+                    readonly property real iconCellHeight: gridUnitHeight
+                    readonly property real iconAreaWidth: iconCellWidth * 7
+                    readonly property real topBandHeight: iconCellHeight * 0.5
+                    readonly property real bottomBandHeight: iconCellHeight * 0.5
 
-                    onFlickStarted: {
-                        if (!isDragging) {
-                            cancelFlick()
-                            contentX = currentIndex * width
+                    palette.windowText: ColorSelector.textColor
+                    leftPadding: (!dockAreaReservedByWindow && DesktopIntegration.dockPosition === Qt.LeftArrow ? dockReserve : 0)
+                    rightPadding: (!dockAreaReservedByWindow && DesktopIntegration.dockPosition === Qt.RightArrow ? dockReserve : 0)
+                    topPadding: (!dockAreaReservedByWindow && DesktopIntegration.dockPosition === Qt.UpArrow ? dockReserve : 0)
+                    bottomPadding: (!dockAreaReservedByWindow && DesktopIntegration.dockPosition === Qt.DownArrow ? dockReserve : 0)
+
+                    Behavior on iconScaleFactor {
+                        NumberAnimation {
+                            duration: 200 * LauncherController.animationSpeedScale
+                            easing.type: Easing.OutQuad
                         }
                     }
-                    onDragStarted: {
-                        isDragging = true
-                    }
-                    onMovementEnded: {
-                        isDragging = false
-                    }
-                    
-                    function setCurrentIndex(index) {
-                        listviewPage.currentIndex = index
-                        listviewPage.currentIndex = Qt.binding(function() { return indicator.currentIndex })
+
+                    Shortcut {
+                        context: Qt.ApplicationShortcut
+                        sequences: [StandardKey.HelpContents, "F1"]
+                        onActivated: LauncherController.showHelp()
+                        onActivatedAmbiguously: LauncherController.showHelp()
                     }
 
-                    property int previousIndex: -1
-                    property bool changedByNonKeyboard: false
-                    model: itemPageModel
+                    Shortcut {
+                        context: Qt.ApplicationShortcut
+                        sequences: ["Ctrl++", "Ctrl+="]
+                        onActivated: baseLayer.increaseIconScale()
+                    }
 
-                    delegate: FocusScope {
-                        id: listItem
-                        width: listviewPage.width
-                        height: listviewPage.height
+                    Shortcut {
+                        context: Qt.ApplicationShortcut
+                        sequences: ["Ctrl+-"]
+                        onActivated: baseLayer.decreaseIconScale()
+                    }
 
-                        property int viewIndex: index
-                        property alias gridViewIndex: gridViewContainer.currentIndex
-                        SortProxyModel {
-                            id: proxyModel
-                            sourceModel: MultipageSortFilterProxyModel {
-                                filterOnlyMode: true
-                                sourceModel: ItemArrangementProxyModel
-                                pageId: viewIndex
-                                folderId: 0
+                    function increaseIconScale() {
+                        if (DesktopIntegration.iconScaleFactor < 1.0) {
+                            DesktopIntegration.iconScaleFactor = Math.min(DesktopIntegration.iconScaleFactor + 0.1, 1.0)
+                        }
+                    }
+
+                    function decreaseIconScale() {
+                        if (DesktopIntegration.iconScaleFactor > 0.5) {
+                            DesktopIntegration.iconScaleFactor = Math.max(DesktopIntegration.iconScaleFactor - 0.1, 0.5)
+                        }
+                    }
+
+                    function tryToRemoveEmptyPage() {
+                        ItemArrangementProxyModel.removeEmptyPage()
+                    }
+
+                    DropArea {
+                        id: dropArea
+                        anchors.fill: parent
+                        z: -1
+
+                        property int pageIntent: 0
+                        property bool createdEmptyPage: false
+                        readonly property real paddingColumns: 0.5
+                        readonly property real horizontalPadding: baseLayer.iconCellWidth * paddingColumns
+
+                        function checkDragMove() {
+                            if (drag.x < horizontalPadding) {
+                                pageIntent = -1
+                            } else if (drag.x > (width - baseLayer.iconCellWidth)) {
+                                const isLastPage = contentView.pageView.currentIndex === contentView.pageView.count - 1
+                                if (isLastPage && createdEmptyPage) {
+                                    return
+                                }
+                                pageIntent = 1
+                            } else {
+                                pageIntent = 0
                             }
-                            sortRole: ItemArrangementProxyModel.IndexInPageRole
-                            sortColumn: 0
                         }
 
-                        MouseArea {
-                            anchors.fill: parent
-                            acceptedButtons: Qt.RightButton | Qt.LeftButton
-                            enabled: !folderGridViewPopup.visible
-                            onClicked: function(mouse) {
-                                // FIXME: prevent the bug:https://bugreports.qt.io/browse/QTBUG-125139;
-                                if (mouse.button === Qt.RightButton) {
-                                    mouse.accepted = false;
-                                } else if (!DebugHelper.avoidHideWindow) {
-                                    LauncherController.visible = false
+                        keys: ["text/x-dde-launcher-dnd-desktopId"]
+
+                        onEntered: {
+                            if (folderGridViewPopup.opened) {
+                                folderGridViewPopup.close()
+                            }
+                        }
+
+                        onPositionChanged: {
+                            checkDragMove()
+                        }
+
+                        onDropped: function(drop) {
+                            if (pageIntent !== 0) {
+                                pageIntent = 0
+                                return
+                            }
+
+                            const dragId = drop.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                            dropOnPage(dragId, "internal/folders/0", contentView.pageView.currentIndex)
+                            parent.pageIntent = 0
+                        }
+
+                        onExited: {
+                            pageIntent = 0
+                        }
+
+                        onPageIntentChanged: {
+                            if (pageIntent !== 0) {
+                                dndMovePageTimer.restart()
+                            } else {
+                                dndMovePageTimer.stop()
+                            }
+                        }
+
+                        Timer {
+                            id: dndMovePageTimer
+                            interval: 1000
+
+                            onTriggered: {
+                                if (parent.pageIntent > 0) {
+                                    const isLastPage = contentView.pageView.currentIndex === contentView.pageView.count - 1
+                                    if (isLastPage && !dropArea.createdEmptyPage) {
+                                        const newPageIndex = ItemArrangementProxyModel.creatEmptyPage()
+                                        dropArea.createdEmptyPage = true
+                                        contentView.pageView.setCurrentIndex(newPageIndex)
+                                        parent.pageIntent = 0
+                                        return
+                                    }
+                                    incrementPageIndex(contentView.pageView)
+                                } else if (parent.pageIntent < 0) {
+                                    decrementPageIndex(contentView.pageView)
+                                }
+
+                                parent.pageIntent = 0
+                                if (contentView.pageView.currentIndex !== 0) {
+                                    parent.checkDragMove()
                                 }
                             }
                         }
 
-                        GridViewContainer {
-                            id: gridViewContainer
-                            objectName: "gridViewContainer"
-                            anchors.fill: parent
-                            rows: 4
-                            columns: 8
-                            paddingColumns: 0.5
-                            model: proxyModel
-                            padding: 10
-                            interactive: false
-                            focus: true
-
-                            function checkPageSwitchState() {
-                                if (listItem.viewIndex !== listviewPage.currentIndex)
-                                    return
-                                if (listviewPage.previousIndex === -1) {
-                                    listviewPage.previousIndex = listviewPage.currentIndex
-                                    return
+                        Connections {
+                            target: dndItem
+                            function onDragEnded() {
+                                if (dropArea.createdEmptyPage) {
+                                    baseLayer.tryToRemoveEmptyPage()
+                                    dropArea.createdEmptyPage = false
                                 }
-                                // 如果是通过非键盘方式(滚轮/indicator)翻页，始终将焦点设置到第一个应用
-                                if (listviewPage.changedByNonKeyboard) {
-                                    gridViewContainer.setPreviousPageSwitch(false)
-                                    listviewPage.changedByNonKeyboard = false
-                                } else if (listviewPage.currentIndex + 1 === listviewPage.previousIndex || (listviewPage.previousIndex === 0 && listviewPage.currentIndex === listviewPage.count - 1)) {
-                                    gridViewContainer.setPreviousPageSwitch(true)
-                                } else {
-                                    gridViewContainer.setPreviousPageSwitch(false)
-                                }
-                                // 延迟更新previousIndex，避免重复处理
-                                Qt.callLater(function() {
-                                    listviewPage.previousIndex = listviewPage.currentIndex
-                                })
+                                ItemArrangementProxyModel.persistArrangement()
                             }
-                            Keys.onLeftPressed: function(event) {
-                                event.accepted = true
+                        }
+                    }
 
-                                let count = proxyModel.count
-                                if (count === 0) {
-                                    return
-                                }
+                    Timer {
+                        id: flipPageDelay
+                        interval: 400
+                        repeat: false
+                    }
 
-                                let current = gridViewContainer.currentIndex
-                                if (current > 0) {
-                                    gridViewContainer.currentIndex = current - 1
-                                    return
-                                }
+                    contentItem: Item {
+                        anchors.fill: parent
 
-                                let pageCount = itemPageModel.rowCount()
-                                if (pageCount <= 1) {
-                                    gridViewContainer.currentIndex = count - 1
-                                    return
-                                }
+                        Item {
+                                id: fullscreenCanvas
+                                anchors.fill: parent
+                                anchors.leftMargin: baseLayer.leftPadding
+                                anchors.rightMargin: baseLayer.rightPadding
+                                anchors.topMargin: baseLayer.topPadding
+                                anchors.bottomMargin: baseLayer.bottomPadding
+                                clip: true
 
-                                if (listItem.viewIndex === 0) {
-                                    // is the 1st page, go to last page
-                                    listviewPage.setCurrentIndex(pageCount - 1)
-                                } else {
-                                    // not the 1st page, simply use SwipeView default behavior
-                                    listviewPage.setCurrentIndex(listItem.viewIndex - 1)
-                                }
-                            }
-                            Keys.onRightPressed: function(event) {
-                                event.accepted = true
+                                MouseArea {
+                                    anchors.fill: parent
+                                    scrollGestureEnabled: false
+                                    enabled: !folderGridViewPopup.visible
 
-                                let count = proxyModel.count
-                                if (count === 0) {
-                                    return
-                                }
-
-                                let current = gridViewContainer.currentIndex
-                                if (current < count - 1) {
-                                    gridViewContainer.currentIndex = current + 1
-                                    return
-                                }
-
-                                let pageCount = itemPageModel.rowCount()
-                                if (pageCount <= 1) {
-                                    gridViewContainer.currentIndex = 0
-                                    return
-                                }
-
-                                if (listItem.viewIndex === (pageCount - 1) && pageCount > 1) {
-                                    // is the last page, go to first page
-                                    // mark this as a "next page" switch so that checkPageSwitchState
-                                    // will select the first item on the target page
-                                    listviewPage.previousIndex = 0
-                                    listviewPage.setCurrentIndex(0)
-                                } else {
-                                    // switch to the next page in order and also treat it as "next page"
-                                    let nextPageIndex = listItem.viewIndex + 1
-                                    listviewPage.previousIndex = nextPageIndex
-                                    listviewPage.setCurrentIndex(nextPageIndex)
-                                }
-                            }
-                            opacity: folderGridViewPopup.visible ? 0.2 : 1
-                            Behavior on opacity {
-                                NumberAnimation { duration: 200; easing.type: Easing.OutQuad }
-                            }
-                            activeGridViewFocusOnTab: listviewPage.ListView.isCurrentItem
-                            itemMove: Transition {
-                                id: itemMoveTransition
-                                enabled: false
-                                NumberAnimation {
-                                    properties: "x,y"
-                                    duration: 200
-                                    easing.type: Easing.OutQuad
-                                }
-                            }
-                            delegate: DropArea {
-                                Keys.forwardTo: [iconItemDelegate]
-
-                                property bool isDragHover: false
-
-                                visible: !folderGridViewPopup.visible || folderGridViewPopup.currentFolderId !== Number(model.desktopId.replace("internal/folders/", ""))
-                                width: gridViewContainer.cellWidth
-                                height: gridViewContainer.cellHeight
-                                onEntered: function (drag) {
-                                    if (folderGridViewPopup.opened) {
-                                        folderGridViewPopup.close()
-                                    }
-                                    let dragId = drag.getDataAsString("text/x-dde-launcher-dnd-desktopId")
-                                    if (dragId !== model.desktopId) {
-                                        isDragHover = true
-                                    }
-                                    dndDropEnterTimer.dragId = dragId
-                                    dndDropEnterTimer.restart()
-                                }
-                                onExited: {
-                                    isDragHover = false
-                                    dndDropEnterTimer.stop()
-                                    dndDropEnterTimer.dragId = ""
-                                }
-                                onDropped: function (drop) {
-                                    isDragHover = false
-                                    dndDropEnterTimer.stop()
-                                    dndDropEnterTimer.dragId = ""
-                                    let dragId = drop.getDataAsString("text/x-dde-launcher-dnd-desktopId")
-                                    let op = 0
-                                    let sideOpPadding = width / 4
-                                    if (drop.x < sideOpPadding) {
-                                        op = -1
-                                    } else if (drop.x > (width - sideOpPadding)) {
-                                        op = 1
-                                    }
-                                    if (op === 0) {
-                                        dndItem.mergeAnimTargetIcon = dndItem.currentlyDraggedIconName
-                                        dndItem.mergeAnimTargetIcon2 = !folderIcons ? iconItemDelegate.iconSource : ""
-                                        let cursorScene = mapToItem(null, drop.x, drop.y)
-                                        let hs = dndItem.Drag.hotSpot
-                                        dndItem.mergeAnimStartX = cursorScene.x - hs.x + dndItem.mergeSize / 2
-                                        dndItem.mergeAnimStartY = cursorScene.y - hs.y + dndItem.mergeSize / 2
-                                        dndItem.mergeAnimPending = true
-                                    }
-                                    dropOnItem(dragId, model.desktopId, op)
-                                    proxyModel.sort(0)
-                                }
-
-                                Timer {
-                                    id: dndDropEnterTimer
-                                    interval: 400
-                                    property string dragId: ""
-                                    onTriggered: function() {
-                                        if (dragId === "") return
-                                        let op = 0
-                                        let sideOpPadding = width / 4
-                                        if (drag.x < sideOpPadding) {
-                                            op = -1
-                                        } else if (drag.x > (width - sideOpPadding)) {
-                                            op = 1
-                                        }
-                                        if (op === 0) {
-                                            dndDropEnterTimer.restart()
+                                    onClicked: function(mouse) {
+                                        if (root.pointInRect(Qt.point(mouse.x, mouse.y), root.searchEditRectInCanvas())) {
                                             return
                                         }
-                                        dropOnItem(dragId, model.desktopId, op)
-                                        proxyModel.sort(0)
+                                        if (!DebugHelper.avoidHideWindow) {
+                                            LauncherController.visible = false
+                                        }
+                                    }
+
+                                    onWheel: function(wheel) {
+                                        if (wheel.modifiers & Qt.ControlModifier) {
+                                            const yDelta = wheel.angleDelta.y / 8
+                                            if (yDelta > 0) {
+                                                baseLayer.increaseIconScale()
+                                            } else if (yDelta < 0) {
+                                                baseLayer.decreaseIconScale()
+                                            }
+                                            return
+                                        }
+
+                                        if (flipPageDelay.running) {
+                                            return
+                                        }
+
+                                        const xDelta = wheel.angleDelta.x / 8
+                                        const yDelta = wheel.angleDelta.y / 8
+                                        let toPage = 0
+                                        if (yDelta !== 0) {
+                                            toPage = yDelta > 0 ? -1 : 1
+                                        } else if (xDelta !== 0) {
+                                            toPage = xDelta > 0 ? 1 : -1
+                                        }
+
+                                        if (toPage < 0) {
+                                            flipPageDelay.start()
+                                            if (!footer.searchEdit.focus) {
+                                                baseLayer.focus = true
+                                            }
+                                            contentView.pageView.changedByNonKeyboard = true
+                                            decrementPageIndex(contentView.pageView)
+                                        } else if (toPage > 0) {
+                                            flipPageDelay.start()
+                                            if (!footer.searchEdit.focus) {
+                                                baseLayer.focus = true
+                                            }
+                                            contentView.pageView.changedByNonKeyboard = true
+                                            incrementPageIndex(contentView.pageView)
+                                        }
                                     }
                                 }
 
-                                IconItemDelegate {
-                                    id: iconItemDelegate
-                                    anchors {
-                                        fill: parent
-                                        margins: 5
-                                    }
+                                TapHandler {
+                                    acceptedButtons: Qt.LeftButton
                                     enabled: !folderGridViewPopup.visible
-                                    dndEnabled: !folderGridViewPopup.opened
-                                    isDragHover: parent.isDragHover
-                                    Drag.mimeData: Helper.generateDragMimeData(model.desktopId)
-                                    opacity: dndItem.currentlyDraggedId !== model.desktopId ? 1 : 0
-                                    iconSource: (iconName && iconName !== "") ? iconName : "application-x-desktop"
-                                    icons: folderIcons
-                                    iconScaleFactor: baseLayer.iconScaleFactor
-                                    transformOrigin: Item.Center
-                                    onItemClicked: {
-                                        launchApp(desktopId)
+
+                                    function inRect(p, left, top, right, bottom) {
+                                        return p.x >= left && p.x <= right && p.y >= top && p.y <= bottom
                                     }
-                                    onFolderClicked: {
-                                        let idStr = model.desktopId
-                                        let idNum = Number(idStr.replace("internal/folders/", ""))
-                                        let itemPos = mapToItem(baseLayer, x, y)
-                                        folderGridViewPopup.currentFolderId = idNum
-                                        folderGridViewPopup.startPointX = itemPos.x + width / 2
-                                        folderGridViewPopup.startPointY = itemPos.y + height / 2
-                                        folderGridViewPopup.open()
-                                        folderGridViewPopup.folderName = model.display.startsWith("internal/category/") ? getCategoryName(model.display.substring(18)) : model.display
-                                        console.log("open folder id:" + idNum)
+
+                                    function hideLauncher() {
+                                        if (!DebugHelper.avoidHideWindow) {
+                                            LauncherController.visible = false
+                                        }
                                     }
-                                    onMenuTriggered: {
-                                        if (folderIcons) return;
-                                        showContextMenu(this, model)
-                                        baseLayer.focus = true
-                                    }
-                                }
-                            }
-                            Connections {
-                                target: listviewPage
-                                function onCurrentIndexChanged() {
-                                    gridViewContainer.checkPageSwitchState()
-                                }
-                            }
-                            Connections {
-                                target: dropArea
-                                function onDropped() {
-                                    gridViewContainer.checkPageSwitchState()
-                                }
-                            }
-                            Timer {
-                                id: delayedEnableItemMoveTimer
-                                interval: 100
-                                onTriggered: function() {
-                                    itemMoveTransition.enabled = true
-                                }
-                            }
-                            Connections {
-                                target: LauncherController
-                                function onCurrentFrameChanged() {
-                                    // Disable itemMoveTransition on launch for bug https://pms.uniontech.com/bug-view-270945.html
-                                    if (LauncherController.currentFrame === "WindowedFrame") {
-                                        itemMoveTransition.enabled = false
-                                    } else {
-                                        delayedEnableItemMoveTimer.restart()
+
+                                    onTapped: function(eventPoint, button) {
+                                        const p = eventPoint.position
+                                        const searchRect = root.searchEditRectInCanvas()
+                                        const inSearch = root.pointInRect(p, searchRect)
+                                        if (p.y >= footer.y && p.y <= footer.y + footer.height && !inSearch) {
+                                            hideLauncher()
+                                            return
+                                        }
+
+                                        const exitLeft = fullscreenCanvas.width - 30 - 40
+                                        const exitTop = 30
+                                        const exitRight = exitLeft + 40
+                                        const exitBottom = exitTop + 40
+                                        if (p.y >= header.y && p.y <= header.y + header.height
+                                                && !inRect(p, exitLeft, exitTop, exitRight, exitBottom)) {
+                                            hideLauncher()
+                                        }
                                     }
                                 }
-                            }
-                            Component.onCompleted: {
-                                if (LauncherController.currentFrame === "FullscreenFrame") {
-                                    itemMoveTransition.enabled = true
+
+                                FullscreenHeader {
+                                    id: header
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    bandHeight: baseLayer.topBandHeight
+                                    searchActive: footer.searchEdit.text !== ""
+                                    pageView: contentView.pageView
+                                    glassSourceItem: launchAnimationBackdrop
+                                    glassSampleRevision: root.glassSampleRevision
+                                    onExitRequested: {
+                                        footer.searchEdit.text = ""
+                                        LauncherController.setCurrentFrameToWindowedFrame()
+                                    }
                                 }
-                                gridViewContainer.checkPageSwitchState()
-                            }
-                            Component.onDestruction: {
-                            }                            
+
+                                Item {
+                                    id: contentArea
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: header.bottom
+                                    anchors.bottom: footer.top
+                                    clip: true
+
+                                    FullscreenContentView {
+                                        id: contentView
+                                        anchors.fill: parent
+                                        folderGridViewPopup: folderGridViewPopup
+                                        dndItem: dndItem
+                                        dropArea: dropArea
+                                        mapTarget: folderGridViewPopup
+                                        iconGridMotionSerial: root.iconGridMotionSerial
+                                        iconGridMotionHiding: root.iconGridMotionHiding
+                                        iconGridMotionSpeedScale: root.iconGridMotionSpeedScale
+                                        cellWidth: baseLayer.iconCellWidth
+                                        cellHeight: baseLayer.iconCellHeight
+                                        iconScaleFactor: baseLayer.iconScaleFactor
+                                        externalDimProgress: folderGridViewPopup.externalDimProgress
+                                        searchText: footer.searchEdit.text
+                                        glassSourceItem: launchAnimationBackdrop
+                                        glassSampleRevision: root.glassSampleRevision
+                                        launchAppFn: function(desktopId) { launchApp(desktopId) }
+                                        showContextMenuFn: function(item, model) { showContextMenu(item, model) }
+                                        getCategoryNameFn: function(section) { return getCategoryName(section) }
+                                    }
+                                }
+
+                                FullscreenFooter {
+                                    id: footer
+                                    z: 100
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    bandHeight: baseLayer.bottomBandHeight
+                                    maxSearchWidth: baseLayer.iconAreaWidth
+                                    dimProgress: folderGridViewPopup.externalDimProgress
+                                    pageView: contentView.pageView
+                                    searchGrid: contentView.searchGrid
+                                    searchResultCount: contentView.searchResultCount
+                                    glassSourceItem: launchAnimationBackdrop
+                                    glassSampleRevision: root.glassSampleRevision
+                                }
+
+                                ToolButton {
+                                    id: previousPageButton
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 30
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    z: 10
+                                    width: 50
+                                    height: 50
+                                    hoverEnabled: true
+                                    visible: footer.searchEdit.text === ""
+                                             && contentView.pageView
+                                             && contentView.pageView.count > 1
+                                             && !folderGridViewPopup.visible
+                                    enabled: visible
+                                    display: AbstractButton.IconOnly
+                                    icon.name: "go-previous"
+                                    icon.width: 20
+                                    icon.height: 20
+                                    icon.color: "#FFFFFFFF"
+                                    contentItem: Item {
+                                        anchors.fill: parent
+
+                                        Canvas {
+                                            anchors.centerIn: parent
+                                            width: 20
+                                            height: 20
+                                            onPaint: {
+                                                const ctx = getContext("2d")
+                                                ctx.clearRect(0, 0, width, height)
+                                                ctx.strokeStyle = "#FFFFFFFF"
+                                                ctx.lineWidth = 2.2
+                                                ctx.lineCap = "round"
+                                                ctx.lineJoin = "round"
+                                                ctx.beginPath()
+                                                ctx.moveTo(12.5, 5)
+                                                ctx.lineTo(7.5, 10)
+                                                ctx.lineTo(12.5, 15)
+                                                ctx.stroke()
+                                            }
+                                        }
+                                    }
+                                    background: FrostedGlassBackground {
+                                        radius: 25
+                                        sourceItem: launchAnimationBackdrop
+                                        sampleRevision: root.glassSampleRevision
+                                        brightness: previousPageButton.down ? -0.1 : previousPageButton.hovered ? 0.2 : 0.0
+                                        tintColor: Qt.rgba(1, 1, 1, previousPageButton.down ? 0.16 : previousPageButton.hovered ? 0.12 : 0.08)
+                                        borderColor: Qt.rgba(1, 1, 1, 0.12)
+                                    }
+                                    onClicked: {
+                                        contentView.pageView.changedByNonKeyboard = true
+                                        decrementPageIndex(contentView.pageView)
+                                    }
+                                }
+
+                                ToolButton {
+                                    id: nextPageButton
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 30
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    z: 10
+                                    width: 50
+                                    height: 50
+                                    hoverEnabled: true
+                                    visible: footer.searchEdit.text === ""
+                                             && contentView.pageView
+                                             && contentView.pageView.count > 1
+                                             && !folderGridViewPopup.visible
+                                    enabled: visible
+                                    display: AbstractButton.IconOnly
+                                    icon.name: "go-next"
+                                    icon.width: 20
+                                    icon.height: 20
+                                    icon.color: "#FFFFFFFF"
+                                    contentItem: Item {
+                                        anchors.fill: parent
+
+                                        Canvas {
+                                            anchors.centerIn: parent
+                                            width: 20
+                                            height: 20
+                                            onPaint: {
+                                                const ctx = getContext("2d")
+                                                ctx.clearRect(0, 0, width, height)
+                                                ctx.strokeStyle = "#FFFFFFFF"
+                                                ctx.lineWidth = 2.2
+                                                ctx.lineCap = "round"
+                                                ctx.lineJoin = "round"
+                                                ctx.beginPath()
+                                                ctx.moveTo(7.5, 5)
+                                                ctx.lineTo(12.5, 10)
+                                                ctx.lineTo(7.5, 15)
+                                                ctx.stroke()
+                                            }
+                                        }
+                                    }
+                                    background: FrostedGlassBackground {
+                                        radius: 25
+                                        sourceItem: launchAnimationBackdrop
+                                        sampleRevision: root.glassSampleRevision
+                                        brightness: nextPageButton.down ? -0.1 : nextPageButton.hovered ? 0.2 : 0.0
+                                        tintColor: Qt.rgba(1, 1, 1, nextPageButton.down ? 0.16 : nextPageButton.hovered ? 0.12 : 0.08)
+                                        borderColor: Qt.rgba(1, 1, 1, 0.12)
+                                    }
+                                    onClicked: {
+                                        contentView.pageView.changedByNonKeyboard = true
+                                        incrementPageIndex(contentView.pageView)
+                                    }
+                                }
+
+                                Item {
+                                    id: footerBlankClickLayer
+                                    anchors.fill: parent
+                                    z: 90
+                                    visible: !folderGridViewPopup.visible
+
+                                    readonly property real footerTop: footer.y
+                                    readonly property real footerBottom: footer.y + footer.height
+                                    readonly property rect searchRect: root.searchEditRectInCanvas()
+                                    readonly property real searchLeft: searchRect.x
+                                    readonly property real searchTop: searchRect.y
+                                    readonly property real searchRight: searchRect.x + searchRect.width
+                                    readonly property real searchBottom: searchRect.y + searchRect.height
+
+                                    function hideLauncher() {
+                                        if (!DebugHelper.avoidHideWindow) {
+                                            LauncherController.visible = false
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        x: 0
+                                        y: footerBlankClickLayer.footerTop
+                                        width: Math.max(0, footerBlankClickLayer.searchLeft)
+                                        height: footer.height
+                                        onClicked: footerBlankClickLayer.hideLauncher()
+                                    }
+
+                                    MouseArea {
+                                        x: footerBlankClickLayer.searchRight
+                                        y: footerBlankClickLayer.footerTop
+                                        width: Math.max(0, parent.width - x)
+                                        height: footer.height
+                                        onClicked: footerBlankClickLayer.hideLauncher()
+                                    }
+
+                                    MouseArea {
+                                        x: footerBlankClickLayer.searchLeft
+                                        y: footerBlankClickLayer.footerTop
+                                        width: footer.searchEdit.width
+                                        height: Math.max(0, footerBlankClickLayer.searchTop - footerBlankClickLayer.footerTop)
+                                        onClicked: footerBlankClickLayer.hideLauncher()
+                                    }
+
+                                    MouseArea {
+                                        x: footerBlankClickLayer.searchLeft
+                                        y: footerBlankClickLayer.searchBottom
+                                        width: footer.searchEdit.width
+                                        height: Math.max(0, footerBlankClickLayer.footerBottom - footerBlankClickLayer.searchBottom)
+                                        onClicked: footerBlankClickLayer.hideLauncher()
+                                    }
+                                }
                         }
-                    }
-
-                    Component.onCompleted: {
-                        listviewPage.setCurrentIndex(0)
-                    }
-                }
-
-                DelegateModel {
-                    id: delegateSearchResultModel
-                    model: SearchFilterProxyModel
-                    delegate: IconItemDelegate {
-                        iconSource: iconName
-                        width: searchResultGridViewContainer.cellWidth
-                        height: searchResultGridViewContainer.cellHeight
-                        padding: 5
-                        iconScaleFactor: baseLayer.iconScaleFactor
-                        transformOrigin: Item.Center
-                        onItemClicked: {
-                            launchApp(desktopId)
-                        }
-                        onMenuTriggered: {
-                            showContextMenu(this, model)
-                        }
-                    }
-                }
-
-                GridViewContainer {
-                    id: searchResultGridViewContainer
-
-                    anchors.fill: parent
-                    visible: searchEdit.text !== ""
-                    activeFocusOnTab: visible && gridViewFocus
-                    focus: true
-                    alwaysShowHighlighted: true
-
-                    rows: 4
-                    columns: 8
-                    paddingColumns: 0.5
-                    placeholderIcon: "search_no_result"
-                    placeholderText: qsTranslate("SearchResultView", "No search results")
-                    placeholderIconSize: 256
-                    model: delegateSearchResultModel
-                    padding: 10
-                    interactive: true
-                    vScrollBar: ScrollBar {
-                        visible: parent.model.count > 4 * 8
-                        active: parent.model.count > 4 * 8
                     }
                 }
             }
 
-
-            SearchEdit {
-                id: searchEdit
-
-                Layout.alignment: Qt.AlignHCenter
-                implicitWidth: (parent.width / 2) > 280 ? 280 : (parent.width / 2)
-                opacity: folderGridViewPopup.visible ? 0.4 : 1
-
-                property Palette iconPalette: Palette {
-                    normal {
-                        crystal: Qt.rgba(0, 0, 0, 1)
-                    }
-                    normalDark {
-                        crystal: Qt.rgba(1, 1, 1, 1)
-                    }
-                }
-                placeholderTextColor: palette.brightText
-                palette.windowText: ColorSelector.iconPalette
-
-                KeyNavigation.up: searchEdit.text === "" ? listviewPage : searchResultGridViewContainer
-                KeyNavigation.down: KeyNavigation.up
-                Keys.onReturnPressed: {
-                    if (searchEdit.text === "") {
-                        listviewPage.focus = true
-                    } else {
-                        searchResultGridViewContainer.currentItem?.itemClicked()
-                    }
-                }
-                onTextChanged: {
-                    searchEdit.focus = true
-                    SearchFilterProxyModel.setFilterRegularExpression(text.trim())
-                    // reset highlighted item
-                    if (searchResultGridViewContainer.visible) {
-                        if (delegateSearchResultModel.count > 0) {
-                            searchResultGridViewContainer.currentIndex = 0
-                        }
-                    }
-                }
-            }
         }
 
-        FolderGridViewPopup {
+        FullscreenFolderOverlay {
             id: folderGridViewPopup
-            cs: searchResultGridViewContainer.cellHeight
-            centerPosition: Qt.point(curPointX, curPointY)
-
-            property int startPointX: 0
-            property int startPointY: 0
-            readonly property point endPoint: Qt.point((parent.width - parent.rightPadding + parent.leftPadding) / 2, (parent.height - parent.bottomPadding + parent.topPadding) / 2)
-            property int curPointX: 0
-            property int curPointY: 0
-
-            enter: Transition {
-                ParallelAnimation {
-                    NumberAnimation {
-                        duration: 200
-                        properties: "scale"
-                        easing.type: Easing.OutQuad
-                        from: 0.2
-                        to: 1
-                    }
-                    NumberAnimation {
-                        duration: 200
-                        properties: "curPointX"
-                        easing.type: Easing.OutQuad
-                        from: folderGridViewPopup.startPointX
-                        to: folderGridViewPopup.endPoint.x
-                    }
-                    NumberAnimation {
-                        duration: 200
-                        properties: "curPointY"
-                        easing.type: Easing.OutQuad
-                        from: folderGridViewPopup.startPointY
-                        to: folderGridViewPopup.endPoint.y
-                    }
-                }
+            anchors.fill: parent
+            cs: baseLayer.iconCellHeight
+            backgroundSourceItem: blurSceneSnapshot
+            refreshBackgroundSourceFn: function() { root.refreshGlassSnapshot() }
+            backgroundSourceOriginX: 0
+            backgroundSourceOriginY: 0
+            dndItem: dndItem
+            focusTarget: baseLayer
+            launchAppFn: function(desktopId) { launchApp(desktopId) }
+            showContextMenuFn: function(item, model) { showContextMenu(item, model) }
+            dropOnPageFn: function(dragId, dropFolderId, pageNumber) {
+                dropOnPage(dragId, dropFolderId, pageNumber)
             }
-
-            exit: Transition {
-                ParallelAnimation {
-                    NumberAnimation {
-                        duration: 200
-                        properties: "scale"
-                        easing.type: Easing.InQuad
-                        from: 1
-                        to: 0.2
-                    }
-                    NumberAnimation {
-                        duration: 200
-                        properties: "curPointX"
-                        easing.type: Easing.InQuad
-                        to: folderGridViewPopup.startPointX
-                        from: folderGridViewPopup.endPoint.x
-                    }
-                    NumberAnimation {
-                        duration: 200
-                        properties: "curPointY"
-                        easing.type: Easing.InQuad
-                        to: folderGridViewPopup.startPointY
-                        from: folderGridViewPopup.endPoint.y
-                    }
-                }
+            dropOnItemFn: function(dragId, dropId, op) {
+                dndItem.text = "drag " + dragId + " onto " + dropId + " with " + op
+                ItemArrangementProxyModel.commitDndOperation(dragId, dropId, op)
             }
+            decrementPageIndexFn: function(pages) { decrementPageIndex(pages) }
+            incrementPageIndexFn: function(pages) { incrementPageIndex(pages) }
+            folderNameFont: LauncherController.adjustFontWeight(DTK.fontManager.t6, Font.Bold)
+            endPoint: Qt.point(width / 2, height / 2)
         }
 
-        Keys.forwardTo: [searchEdit]
-        Keys.onPressed: function(event) {
-            if (baseLayer.focus === true) {
-                // the SearchEdit will catch the key event first, and events that it won't accept will then got here
-                switch (event.key) {
-                case Qt.Key_Up:
-                case Qt.Key_Down:
-                case Qt.Key_Left:
-                case Qt.Key_Right:
-                case Qt.Key_Enter:
-                case Qt.Key_Return:
-                    listviewPage.focus = true
-                }
-            }
+        ShaderEffectSource {
+            id: blurSceneSnapshot
+            anchors.fill: blurSceneSource
+            z: -1
+            visible: false
+            live: false
+            hideSource: false
+            recursive: false
+            smooth: true
+            mipmap: true
+            sourceItem: blurSceneSource
+            textureSize: Qt.size(
+                Math.max(64, Math.ceil(width * Screen.devicePixelRatio)),
+                Math.max(64, Math.ceil(height * Screen.devicePixelRatio))
+            )
         }
 
-        Keys.onEscapePressed: {
-            if (!DebugHelper.avoidHideWindow) {
-                LauncherController.visible = false;
-            }
-        }
-
-        Connections {
-            target: LauncherController
-            function onVisibleChanged() {
-                // only do these clean-up steps on launcher get hide
-                if (LauncherController.visible) return
-                // clear searchEdit text
-                searchEdit.text = ""
-                if (listviewPage.currentItem) {
-                    listviewPage.currentItem.gridViewIndex = 0
-                }
-                // close folder popup
-                if (folderGridViewPopup.visible) folderGridViewPopup.close()
-                // reset(remove) keyboard focus
-                baseLayer.focus = true
-            }
-            function onCurrentFrameChanged() {
-                if (LauncherController.currentFrame === "FullscreenFrame") {
-                    listviewPage.setCurrentIndex(0)
-                }
+        Timer {
+            id: glassSnapshotSettledRefreshTimer
+            interval: 240 * LauncherController.animationSpeedScale
+            repeat: false
+            onTriggered: {
+                root.refreshGlassSamples()
+                root.refreshGlassSnapshot()
             }
         }
     }
-    onInputReceived: function(text){
-        if (searchEdit.text !== "" || searchEdit.focus !== true) {
-            searchEdit.text = text
-            searchEdit.focus = true
+
+    Keys.forwardTo: [footer.searchEdit]
+
+    Keys.onPressed: function(event) {
+        if (!baseLayer.focus) {
+            return
+        }
+
+        switch (event.key) {
+        case Qt.Key_Up:
+        case Qt.Key_Down:
+        case Qt.Key_Left:
+        case Qt.Key_Right:
+        case Qt.Key_Enter:
+        case Qt.Key_Return:
+            contentView.pageView.focus = true
+            break
+        }
+    }
+
+    Keys.onEscapePressed: {
+        if (!DebugHelper.avoidHideWindow) {
+            LauncherController.visible = false
+        }
+    }
+
+    Connections {
+        target: root.Window.window
+
+        function onVisibleChanged() {
+            if (root.Window.window && root.Window.window.visible) {
+                inputActivationTimer.restart()
+                Qt.callLater(root.refreshGlassSnapshotAfterSettled)
+                return
+            }
+
+            if (!root.Window.window) {
+                return
+            }
+
+            releaseWindowInput()
+            footer.searchEdit.text = ""
+            contentView.resetCurrentGridIndex()
+            if (folderGridViewPopup.visible) {
+                folderGridViewPopup.close()
+            }
+            baseLayer.focus = true
+        }
+    }
+
+    Connections {
+        target: contentView.pageView
+
+        function onCurrentIndexChanged() {
+            Qt.callLater(root.refreshGlassSnapshotAfterSettled)
+        }
+    }
+
+    Connections {
+        target: LauncherController
+
+        function onCurrentFrameChanged() {
+            if (LauncherController.currentFrame === "FullscreenFrame") {
+                contentView.resetToFirstPage()
+            }
+        }
+    }
+
+    onInputReceived: function(text) {
+        if (footer.searchEdit.text !== "" || footer.searchEdit.focus !== true) {
+            footer.searchEdit.text = text
+            footer.searchEdit.focus = true
         }
     }
 }

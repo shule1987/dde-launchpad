@@ -5,6 +5,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import QtQuick.Window 2.15
 
 import org.deepin.dtk 1.0
 import org.deepin.dtk.style 1.0 as DStyle
@@ -21,13 +22,36 @@ AppletItem {
     id: launcher
     property bool useColumnLayout: Panel.position % 2
     property int dockOrder: 12
+    property rect fullscreenLaunchSourceGlobalRect: Qt.rect(0, 0, 1, 1)
+    property double lastDockMousePressMs: 0
+    property double lastPanelEdgeToggleMs: 0
+    property double lastDockDeactivationHideMs: 0
+    readonly property int crossSourceToggleGuardInterval: 220
+    readonly property int deactivationToggleGuardInterval: 320
     // 1:4 the distance between app : dock height; get width/height≈0.8
     implicitWidth: useColumnLayout ? Panel.rootObject.dockSize : Panel.rootObject.dockItemMaxSize * 0.8
     implicitHeight: useColumnLayout ? Panel.rootObject.dockItemMaxSize * 0.8 : Panel.rootObject.dockSize
 
-   function toggleLauncher() {
-        LauncherController.visible = !LauncherController.visible
+    function toggleLauncher() {
+        assignFullscreenFrameScreen()
+        updateFullscreenLaunchSourceRect()
+        LauncherController.toggleFromDock()
         toolTip.close()
+    }
+
+    function hideAfterDockDeactivation() {
+        const now = Date.now()
+        if (fullscreenFrame.launcherRequestedVisible
+            && now - fullscreenFrame.lastShowAnimationStartMs < Math.max(320, fullscreenFrame.launchShowAnimationDuration + fullscreenFrame.frameInterval * 4)) {
+            return
+        }
+
+        lastDockDeactivationHideMs = now
+        LauncherController.hideFromDockDeactivation()
+    }
+
+    function recentlyHidAfterDockDeactivation(now) {
+        return now - lastDockDeactivationHideMs < deactivationToggleGuardInterval
     }
 
     Connections {
@@ -37,9 +61,6 @@ AppletItem {
             updateLaunchpadPos()
         }
         function onViewDeactivated() {
-            if (LauncherController.currentFrame === "FullscreenFrame" && LauncherController.visible) {
-                LauncherController.hideWithTimer()
-            }
         }
     }
 
@@ -47,7 +68,18 @@ AppletItem {
         target: Panel
         function onLeftEdgeClicked(minOrder) {
             if (launcher.dockOrder == minOrder) {
-                toggleLauncher()
+                const now = Date.now()
+                if (recentlyHidAfterDockDeactivation(now)) {
+                    return
+                }
+                if (now - launcher.lastDockMousePressMs < launcher.crossSourceToggleGuardInterval) {
+                    return
+                }
+                launcher.lastPanelEdgeToggleMs = now
+                assignFullscreenFrameScreen()
+                updateFullscreenLaunchSourceRect()
+                LauncherController.toggleFromPanelEdge()
+                toolTip.close()
             }
         }
     }
@@ -62,11 +94,79 @@ AppletItem {
     function updateLaunchpadPos()
     {
         updateItemPos()
+        updateFullscreenLaunchSourceRect()
         var launchpad = DS.applet("org.deepin.ds.launchpad")
         if (!launchpad || !launchpad.rootObject)
             return
 
         launchpad.rootObject.windowedPos = launcher.itemPos
+        launchpad.rootObject.fullscreenLaunchSourceGlobalRect = launcher.fullscreenLaunchSourceGlobalRect
+    }
+
+    function updateFullscreenLaunchSourceRect()
+    {
+        if (!icon)
+            return
+
+        const renderedWidth = Math.max(1, icon.width * Math.abs(icon.scale))
+        const renderedHeight = Math.max(1, icon.height * Math.abs(icon.scale))
+        const iconGlobalCenter = resolvedIconGlobalCenter()
+
+        fullscreenLaunchSourceGlobalRect = Qt.rect(
+            iconGlobalCenter.x - renderedWidth / 2,
+            iconGlobalCenter.y - renderedHeight / 2,
+            renderedWidth,
+            renderedHeight
+        )
+    }
+
+    function finitePoint(point)
+    {
+        return point && isFinite(point.x) && isFinite(point.y)
+    }
+
+    function descaledDockRect()
+    {
+        const ratio = Math.max(1, Screen.devicePixelRatio || 1)
+        const rect = DesktopIntegration.dockGeometry
+        return Qt.rect(rect.x / ratio, rect.y / ratio, rect.width / ratio, rect.height / ratio)
+    }
+
+    function expandedRectContains(rect, point, padding)
+    {
+        return point.x >= rect.x - padding
+            && point.x <= rect.x + rect.width + padding
+            && point.y >= rect.y - padding
+            && point.y <= rect.y + rect.height + padding
+    }
+
+    function resolvedIconGlobalCenter()
+    {
+        const localCenter = Qt.point(icon.width / 2, icon.height / 2)
+        const dockRect = descaledDockRect()
+        const dockPadding = Math.max(96, Panel.rootObject.dockSize || 0)
+
+        const iconGlobalCenter = icon.mapToGlobal(localCenter.x, localCenter.y)
+        if (finitePoint(iconGlobalCenter) && expandedRectContains(dockRect, iconGlobalCenter, dockPadding)) {
+            return iconGlobalCenter
+        }
+
+        if (Applet.rootObject) {
+            const centerInApplet = icon.mapToItem(Applet.rootObject, localCenter.x, localCenter.y)
+            const appletGlobalCenter = Applet.rootObject.mapToGlobal(centerInApplet.x, centerInApplet.y)
+            if (finitePoint(appletGlobalCenter) && expandedRectContains(dockRect, appletGlobalCenter, dockPadding)) {
+                return appletGlobalCenter
+            }
+        }
+
+        const centerInDockWindow = icon.mapToItem(null, localCenter.x, localCenter.y)
+        const dockWindowGlobalCenter = Qt.point(dockRect.x + centerInDockWindow.x,
+                                                dockRect.y + centerInDockWindow.y)
+        if (finitePoint(dockWindowGlobalCenter) && expandedRectContains(dockRect, dockWindowGlobalCenter, dockPadding)) {
+            return dockWindowGlobalCenter
+        }
+
+        return Qt.point(dockRect.x + dockRect.width / 2, dockRect.y + dockRect.height / 2)
     }
     Component.onCompleted: {
         updateLaunchpadPos()
@@ -161,6 +261,7 @@ AppletItem {
         for (const scr of Qt.application.screens) {
             if (scr.name === newScreenName) {
                 launcher.fullscreenFrame.screen = scr
+                LauncherController.currentScreen = scr.name
                 return
             }
         }
@@ -186,9 +287,175 @@ AppletItem {
     property var fullscreenFrame: ApplicationWindow {
         objectName: "FullscreenFrameApplicationWindow"
         title: "org.deepin.ds.launchpad.fullscreen"
-        visible: LauncherController.visible && (LauncherController.currentFrame !== "WindowedFrame")
+        property bool launcherRequestedVisible: LauncherController.visible && (LauncherController.currentFrame !== "WindowedFrame")
+        property bool keepVisibleWhileAnimating: launcherRequestedVisible
+        property bool visibilityInitialized: false
+        property bool showAnimationAwaitingMappedFrame: false
+        property double lastShowAnimationStartMs: 0
+        property int activeLaunchAnimationSpeedScale: 1
+        property rect launchSourceGlobalRect: launcher.fullscreenLaunchSourceGlobalRect
+        readonly property real screenRefreshRate: Math.max(60, LauncherController.displayRefreshRate)
+        readonly property int frameInterval: Math.max(1, Math.floor(1000 / screenRefreshRate))
+        readonly property int launchAnimationSpeedScale: activeLaunchAnimationSpeedScale
+        readonly property int launchShowAnimationDuration: 200 * launchAnimationSpeedScale
+        readonly property int launchHideAnimationDuration: 200 * launchAnimationSpeedScale
+        readonly property int launchBackdropAnimationDuration: 180 * launchAnimationSpeedScale
+        readonly property int launchGridMotionMaxDelay: 30 * launchAnimationSpeedScale
+        readonly property int launchHideDeadline: launchHideAnimationDuration + launchGridMotionMaxDelay + frameInterval * 2
+        readonly property bool launchAnimationRunning: showAnimation.running || hideAnimation.running || showAnimationAwaitingMappedFrame
+        readonly property bool launchAnimationProxyVisible: showAnimation.running || hideAnimation.running
+        readonly property var launchAnimationViewportItem: fullscreenFrameLoader.item ? fullscreenFrameLoader.item.launchAnimationViewportItem : null
+        readonly property var launchAnimationBackdropItem: fullscreenFrameLoader.item ? fullscreenFrameLoader.item.launchAnimationBackdropItem : null
+        readonly property var launchAnimationForegroundItem: fullscreenFrameLoader.item ? fullscreenFrameLoader.item.launchAnimationForegroundItem : null
+        readonly property var launchAnimationForegroundScale: fullscreenFrameLoader.item ? fullscreenFrameLoader.item.launchAnimationForegroundScale : null
+        readonly property var launchAnimationForegroundSnapshotItem: fullscreenFrameLoader.item ? fullscreenFrameLoader.item.launchAnimationForegroundSnapshotItem : null
+
+        function resolvedLaunchSourceRect() {
+            const screenGeometry = (fullscreenFrame.screen && fullscreenFrame.screen.geometry)
+                ? fullscreenFrame.screen.geometry
+                : Qt.rect(fullscreenFrame.x || 0,
+                          fullscreenFrame.y || 0,
+                          Math.max(1, fullscreenFrame.width || 0),
+                          Math.max(1, fullscreenFrame.height || 0))
+            const viewportItem = launchAnimationViewportItem
+            const safeWidth = Math.max(1, viewportItem ? viewportItem.width : screenGeometry.width)
+            const safeHeight = Math.max(1, viewportItem ? viewportItem.height : screenGeometry.height)
+            const sourceWidth = Math.min(Math.max(1, launchSourceGlobalRect.width), safeWidth)
+            const sourceHeight = Math.min(Math.max(1, launchSourceGlobalRect.height), safeHeight)
+            const viewportX = viewportItem ? viewportItem.x : 0
+            const viewportY = viewportItem ? viewportItem.y : 0
+            const sourceX = Math.min(Math.max(launchSourceGlobalRect.x - screenGeometry.x - viewportX, 0), safeWidth - sourceWidth)
+            const sourceY = Math.min(Math.max(launchSourceGlobalRect.y - screenGeometry.y - viewportY, 0), safeHeight - sourceHeight)
+            return Qt.rect(sourceX, sourceY, sourceWidth, sourceHeight)
+        }
+
+        function applyLaunchSourceState() {
+            if (!launchAnimationForegroundItem || !launchAnimationForegroundScale) {
+                return
+            }
+
+            launchAnimationForegroundItem.x = 0
+            launchAnimationForegroundItem.y = 0
+            launchAnimationForegroundScale.xScale = 1
+            launchAnimationForegroundScale.yScale = 1
+        }
+
+        function resetFullscreenContentState() {
+            if (launchAnimationBackdropItem) {
+                launchAnimationBackdropItem.opacity = 1
+            }
+            if (launchAnimationForegroundItem) {
+                launchAnimationForegroundItem.x = 0
+                launchAnimationForegroundItem.y = 0
+                launchAnimationForegroundItem.opacity = 1
+            }
+            if (launchAnimationForegroundScale) {
+                launchAnimationForegroundScale.xScale = 1
+                launchAnimationForegroundScale.yScale = 1
+            }
+        }
+
+        function finishHideAnimation() {
+            hideVisibilityDeadlineTimer.stop()
+            showAnimationAwaitingMappedFrame = false
+            if (!launcherRequestedVisible) {
+                keepVisibleWhileAnimating = false
+                resetFullscreenContentState()
+                hide()
+            }
+        }
+
+        function armShowAnimation() {
+            LauncherController.updateSlowLaunchAnimationFromKeyboardModifiers()
+            activeLaunchAnimationSpeedScale = LauncherController.animationSpeedScale
+            showAnimation.stop()
+            hideAnimation.stop()
+            showAnimationKickoffTimer.stop()
+            hideVisibilityDeadlineTimer.stop()
+            lastShowAnimationStartMs = Date.now()
+            updateFullscreenLaunchSourceRect()
+            applyLaunchSourceState()
+            if (launchAnimationBackdropItem) {
+                launchAnimationBackdropItem.opacity = 0
+            }
+            if (launchAnimationForegroundItem) {
+                launchAnimationForegroundItem.opacity = 0
+            }
+            if (launchAnimationForegroundSnapshotItem) {
+                launchAnimationForegroundSnapshotItem.scheduleUpdate()
+            }
+            showAnimationAwaitingMappedFrame = true
+            if (active) {
+                beginShowAnimation()
+            } else {
+                mappedFrameFallbackTimer.restart()
+            }
+        }
+
+        function beginShowAnimation() {
+            if (!showAnimationAwaitingMappedFrame) {
+                return
+            }
+
+            if (!launcherRequestedVisible || !visible) {
+                showAnimationAwaitingMappedFrame = false
+                mappedFrameFallbackTimer.stop()
+                resetFullscreenContentState()
+                return
+            }
+
+            showAnimationAwaitingMappedFrame = false
+            mappedFrameFallbackTimer.stop()
+            if (launchAnimationForegroundSnapshotItem) {
+                launchAnimationForegroundSnapshotItem.scheduleUpdate()
+            }
+            showAnimationKickoffTimer.restart()
+        }
+
+        function startShowAnimation() {
+            const wasVisible = visible
+            hideAnimation.stop()
+            hideVisibilityDeadlineTimer.stop()
+            keepVisibleWhileAnimating = true
+            LauncherController.closeAllPopups()
+            if (wasVisible) {
+                armShowAnimation()
+            }
+        }
+
+        function startHideAnimation() {
+            LauncherController.updateSlowLaunchAnimationFromKeyboardModifiers()
+            activeLaunchAnimationSpeedScale = LauncherController.animationSpeedScale
+            keepVisibleWhileAnimating = true
+            if (!visible) {
+                keepVisibleWhileAnimating = false
+                showAnimationAwaitingMappedFrame = false
+                mappedFrameFallbackTimer.stop()
+                hideVisibilityDeadlineTimer.stop()
+                resetFullscreenContentState()
+                return
+            }
+
+            updateFullscreenLaunchSourceRect()
+            showAnimation.stop()
+            showAnimationAwaitingMappedFrame = false
+            mappedFrameFallbackTimer.stop()
+            resetFullscreenContentState()
+            if (launchAnimationForegroundSnapshotItem) {
+                launchAnimationForegroundSnapshotItem.scheduleUpdate()
+            }
+            if (fullscreenFrameLoader.item) {
+                fullscreenFrameLoader.item.iconGridMotionHiding = true
+                fullscreenFrameLoader.item.iconGridMotionSpeedScale = launchAnimationSpeedScale
+                fullscreenFrameLoader.item.iconGridMotionSerial += 1
+            }
+            hideAnimation.restart()
+            hideVisibilityDeadlineTimer.restart()
+        }
+
+        visible: launcherRequestedVisible || keepVisibleWhileAnimating
         // Set transparent on kwin will cause abnormal rounded corners in FolderPopup, Bug: 10219
-        color: DesktopIntegration.isTreeLand() ? "transparent" : palette.window
+        color: "transparent"
         transientParent: null
 
         Connections {
@@ -218,10 +485,54 @@ AppletItem {
         DWindow.themeType: ApplicationHelper.DarkType
         DWindow.windowStartUpEffect: PlatformHandle.EffectOut
 
+        Component.onCompleted: {
+            resetFullscreenContentState()
+            keepVisibleWhileAnimating = launcherRequestedVisible
+            visibilityInitialized = true
+        }
+
+        onLauncherRequestedVisibleChanged: {
+            if (!visibilityInitialized) {
+                return
+            }
+
+            if (launcherRequestedVisible) {
+                startShowAnimation()
+            } else {
+                startHideAnimation()
+            }
+        }
+
+        Connections {
+            target: LauncherController
+
+            function onVisibleChanged(visible) {
+                if (!fullscreenFrame.visibilityInitialized
+                        || LauncherController.currentFrame === "WindowedFrame") {
+                    return
+                }
+
+                if (visible) {
+                    fullscreenFrame.startShowAnimation()
+                    if (fullscreenFrameLoader.item) {
+                        Qt.callLater(fullscreenFrameLoader.item.activateLauncherInput)
+                    }
+                } else {
+                    fullscreenFrame.startHideAnimation()
+                }
+            }
+
+        }
+
         onVisibleChanged: {
             if (visible) {
-                requestActivate()
                 LauncherController.closeAllPopups()
+                if (fullscreenFrameLoader.item) {
+                    Qt.callLater(fullscreenFrameLoader.item.activateLauncherInput)
+                }
+                if (launcherRequestedVisible) {
+                    armShowAnimation()
+                }
             }
         }
 
@@ -231,6 +542,9 @@ AppletItem {
             }
             if (active) {
                 LauncherController.cancelHide()
+                if (showAnimationAwaitingMappedFrame) {
+                    beginShowAnimation()
+                }
                 return;
             }
             if (!active && !DebugHelper.avoidHideWindow) {
@@ -238,10 +552,17 @@ AppletItem {
             }
         }
 
-        Loader {
+        Item {
+            id: fullscreenContentHost
             anchors.fill: parent
             focus: true
-            sourceComponent: FullscreenFrame {}
+            enabled: fullscreenFrame.launcherRequestedVisible
+
+            Loader {
+                id: fullscreenFrameLoader
+                anchors.fill: parent
+                sourceComponent: FullscreenFrame {}
+            }
 
             Label {
                 visible: DebugHelper.qtDebugEnabled
@@ -259,6 +580,97 @@ AppletItem {
                     anchors.fill: parent
                     onClicked: { debugDialog.open() }
                 }
+            }
+        }
+
+        ParallelAnimation {
+            id: showAnimation
+
+            NumberAnimation {
+                target: fullscreenFrame.launchAnimationBackdropItem
+                property: "opacity"
+                duration: fullscreenFrame.launchBackdropAnimationDuration
+                easing.type: Easing.OutQuad
+                to: 1
+            }
+
+            NumberAnimation {
+                target: fullscreenFrame.launchAnimationForegroundItem
+                property: "opacity"
+                duration: Math.round(fullscreenFrame.launchShowAnimationDuration * 0.86)
+                easing.type: Easing.OutQuad
+                to: 1
+            }
+
+            onFinished: {
+                fullscreenFrame.keepVisibleWhileAnimating = fullscreenFrame.launcherRequestedVisible
+                fullscreenFrame.resetFullscreenContentState()
+            }
+        }
+
+        ParallelAnimation {
+            id: hideAnimation
+
+            NumberAnimation {
+                target: fullscreenFrame.launchAnimationBackdropItem
+                property: "opacity"
+                duration: fullscreenFrame.launchBackdropAnimationDuration
+                easing.type: Easing.InQuad
+                to: 0
+            }
+
+            NumberAnimation {
+                target: fullscreenFrame.launchAnimationForegroundItem
+                property: "opacity"
+                duration: fullscreenFrame.launchHideAnimationDuration
+                easing.type: Easing.InQuad
+                to: 0
+            }
+
+            onFinished: {
+                fullscreenFrame.finishHideAnimation()
+            }
+        }
+
+        Timer {
+            id: hideVisibilityDeadlineTimer
+            interval: fullscreenFrame.launchHideDeadline
+            repeat: false
+            onTriggered: {
+                hideAnimation.stop()
+                fullscreenFrame.finishHideAnimation()
+            }
+        }
+
+        Timer {
+            id: showAnimationKickoffTimer
+            interval: 0
+            repeat: false
+            onTriggered: {
+                if (fullscreenFrameLoader.item) {
+                    fullscreenFrameLoader.item.iconGridMotionHiding = false
+                    fullscreenFrameLoader.item.iconGridMotionSpeedScale = fullscreenFrame.launchAnimationSpeedScale
+                    fullscreenFrameLoader.item.iconGridMotionSerial += 1
+                }
+                showAnimation.restart()
+            }
+        }
+
+        Timer {
+            id: mappedFrameFallbackTimer
+            interval: fullscreenFrame.frameInterval
+            repeat: false
+            onTriggered: {
+                fullscreenFrame.beginShowAnimation()
+            }
+        }
+
+        Connections {
+            target: fullscreenFrame
+            enabled: fullscreenFrame.showAnimationAwaitingMappedFrame
+
+            function onFrameSwapped() {
+                fullscreenFrame.beginShowAnimation()
             }
         }
     }
@@ -368,6 +780,9 @@ AppletItem {
         sourceSize: Qt.size(Dock.MAX_DOCK_TASKMANAGER_ICON_SIZE, Dock.MAX_DOCK_TASKMANAGER_ICON_SIZE)
         onXChanged: updateLaunchpadPos()
         onYChanged: updateLaunchpadPos()
+        onWidthChanged: updateFullscreenLaunchSourceRect()
+        onHeightChanged: updateFullscreenLaunchSourceRect()
+        onScaleChanged: updateFullscreenLaunchSourceRect()
     }
     Timer {
         id: toolTipShowTimer
@@ -384,9 +799,20 @@ AppletItem {
     MouseArea {
         id: mouseHandler
         anchors.fill: parent
-        onClicked: function (mouse) {
+        onPressed: function (mouse) {
             if (mouse.button === Qt.LeftButton) {
+                const now = Date.now()
+                if (recentlyHidAfterDockDeactivation(now)) {
+                    mouse.accepted = true
+                    return
+                }
+                if (now - launcher.lastPanelEdgeToggleMs < launcher.crossSourceToggleGuardInterval) {
+                    mouse.accepted = true
+                    return
+                }
+                launcher.lastDockMousePressMs = now
                 toggleLauncher()
+                mouse.accepted = true
             }
         }
     }

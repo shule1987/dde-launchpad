@@ -58,7 +58,7 @@ Item {
 
         displaced: Transition {
             enabled: root.animationEnabled
-            NumberAnimation { properties: "y"; duration: 150 }
+            NumberAnimation { properties: "y"; duration: 150 * LauncherController.animationSpeedScale }
         }
         move: displaced
         moveDisplaced: displaced

@@ -26,6 +26,8 @@ find_package(QT NAMES ${QT_NS} REQUIRED COMPONENTS Core)
 find_package(${QT_NS} REQUIRED COMPONENTS Core Gui Concurrent Qml Svg Quick QuickControls2 LinguistTools)
 find_package(${DTK_NS} REQUIRED COMPONENTS Core Gui)
 find_package(${ASQT_NS} 1.0 REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(XCB REQUIRED xcb)
 find_package(ECM NO_MODULE)
 if(Qt6_VERSION VERSION_GREATER_EQUAL 6.10)
   find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)
@@ -71,6 +73,13 @@ set(QML_FILES
     ${PROJECT_SOURCE_DIR}/qml/Helper.qml
     ${PROJECT_SOURCE_DIR}/qml/Main.qml
     ${PROJECT_SOURCE_DIR}/qml/FullscreenFrame.qml
+    ${PROJECT_SOURCE_DIR}/qml/FullscreenHeader.qml
+    ${PROJECT_SOURCE_DIR}/qml/FullscreenFooter.qml
+    ${PROJECT_SOURCE_DIR}/qml/FullscreenFolderOverlay.qml
+    ${PROJECT_SOURCE_DIR}/qml/FullscreenSearchResults.qml
+    ${PROJECT_SOURCE_DIR}/qml/FullscreenPageDelegate.qml
+    ${PROJECT_SOURCE_DIR}/qml/FullscreenContentView.qml
+    ${PROJECT_SOURCE_DIR}/qml/FrostedGlassBackground.qml
     ${PROJECT_SOURCE_DIR}/qml/AppItemMenu.qml
     ${PROJECT_SOURCE_DIR}/qml/DummyAppItemMenu.qml
     ${PROJECT_SOURCE_DIR}/qml/GridViewContainer.qml
@@ -95,6 +104,9 @@ set(QML_FILES_NEED_TRANSLATION
     ${PROJECT_SOURCE_DIR}/qml/DummyAppItemMenu.qml
     ${PROJECT_SOURCE_DIR}/qml/Main.qml
     ${PROJECT_SOURCE_DIR}/qml/FullscreenFrame.qml
+    ${PROJECT_SOURCE_DIR}/qml/FullscreenHeader.qml
+    ${PROJECT_SOURCE_DIR}/qml/FullscreenFooter.qml
+    ${PROJECT_SOURCE_DIR}/qml/FullscreenSearchResults.qml
     ${WINDOWED_QML_FILES}
 )
 
@@ -138,7 +150,10 @@ target_link_libraries(launchpadcommon PUBLIC
     launcher-models
     dde-integration-dbus
     treeland-integration
+    ${XCB_LIBRARIES}
 )
+
+target_include_directories(launchpadcommon PRIVATE ${XCB_INCLUDE_DIRS})
 
 install(TARGETS launchpadcommon DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(

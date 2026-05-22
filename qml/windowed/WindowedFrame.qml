@@ -125,7 +125,7 @@ InputEventItem {
         anchors.rightMargin: 1
         spacing: 0
         Behavior on opacity {
-            NumberAnimation { duration: 200; easing.type: Easing.OutQuad }
+            NumberAnimation { duration: 200 * LauncherController.animationSpeedScale; easing.type: Easing.OutQuad }
         }
         AppList {
             id: appList
@@ -198,7 +198,7 @@ InputEventItem {
         folderNameFont: LauncherController.adjustFontWeight(DTK.fontManager.t6, Font.Bold)
         centerPosition: Qt.point(curPointX, curPointY)
 
-        readonly property int animationDuration: 200
+        readonly property int animationDuration: 200 * LauncherController.animationSpeedScale
         property int startPointX: 0
         property int startPointY: 0
         readonly property point endPoint: Qt.point(parent.width / 2, parent.height / 2)

@@ -142,7 +142,6 @@ QtObject {
         if (LauncherController.currentFrame === "WindowedFrame") {
             windowedFrame.requestActivate()
         } else {
-            fullscreenFrame.requestActivate()
             // Update current screen for wallpaper blur based on the screen where launcher is displayed
             var currentScreen = fullscreenFrame.screen
             if (currentScreen) {
@@ -155,6 +154,7 @@ QtObject {
 
     // update by caller.
     property point windowedPos: Qt.point(0, 0)
+    property rect fullscreenLaunchSourceGlobalRect: Qt.rect(0, 0, 1, 1)
     property var windowedFrame: ApplicationWindow {
         id: windowedFrameWindow
         objectName: "WindowedFrameApplicationWindow"
@@ -294,9 +294,103 @@ QtObject {
     property var fullscreenFrame: ApplicationWindow {
         objectName: "FullscreenFrameApplicationWindow"
         title: "Fullscreen Launchpad"
-        visible: LauncherController.visible && (LauncherController.currentFrame !== "WindowedFrame")
+        property bool launcherRequestedVisible: LauncherController.visible && (LauncherController.currentFrame === "FullscreenFrame")
+        property bool keepVisibleWhileAnimating: launcherRequestedVisible
+        property bool visibilityInitialized: false
+        property bool showAnimationAwaitingMappedFrame: false
+        property rect launchSourceGlobalRect: fullscreenLaunchSourceGlobalRect
+        readonly property real screenRefreshRate: Math.max(60, LauncherController.displayRefreshRate)
+        readonly property int frameInterval: Math.max(1, Math.floor(1000 / screenRefreshRate))
+        readonly property int launchAnimationSpeedScale: LauncherController.animationSpeedScale
+        readonly property int launchShowAnimationDuration: Math.min(120, Math.floor(20 * frameInterval)) * launchAnimationSpeedScale
+        readonly property int launchHideAnimationDuration: Math.min(48, Math.floor(8 * frameInterval)) * launchAnimationSpeedScale
+        readonly property int launchHideDeadline: 64 * launchAnimationSpeedScale
+
+        function resolvedLaunchSourceRect() {
+            const screenGeometry = screen ? screen.geometry : Qt.rect(x, y, width, height)
+            const safeWidth = Math.max(1, screenGeometry.width)
+            const safeHeight = Math.max(1, screenGeometry.height)
+            const sourceWidth = Math.min(Math.max(1, launchSourceGlobalRect.width), safeWidth)
+            const sourceHeight = Math.min(Math.max(1, launchSourceGlobalRect.height), safeHeight)
+            const sourceX = Math.min(Math.max(launchSourceGlobalRect.x - screenGeometry.x, 0), safeWidth - sourceWidth)
+            const sourceY = Math.min(Math.max(launchSourceGlobalRect.y - screenGeometry.y, 0), safeHeight - sourceHeight)
+            return Qt.rect(sourceX, sourceY, sourceWidth, sourceHeight)
+        }
+
+        function applyLaunchSourceState() {
+            const sourceRect = resolvedLaunchSourceRect()
+            fullscreenContentWrapper.x = sourceRect.x
+            fullscreenContentWrapper.y = sourceRect.y
+            fullscreenContentScale.xScale = sourceRect.width / Math.max(1, fullscreenContentWrapper.width)
+            fullscreenContentScale.yScale = sourceRect.height / Math.max(1, fullscreenContentWrapper.height)
+        }
+
+        function resetFullscreenContentState() {
+            fullscreenContentWrapper.x = 0
+            fullscreenContentWrapper.y = 0
+            fullscreenContentScale.xScale = 1
+            fullscreenContentScale.yScale = 1
+            fullscreenContentWrapper.opacity = 1
+        }
+
+        function finishHideAnimation() {
+            hideVisibilityDeadlineTimer.stop()
+            showAnimationAwaitingMappedFrame = false
+            if (!launcherRequestedVisible) {
+                keepVisibleWhileAnimating = false
+                resetFullscreenContentState()
+                hide()
+            }
+        }
+
+        function armShowAnimation() {
+            hideVisibilityDeadlineTimer.stop()
+            applyLaunchSourceState()
+            fullscreenContentWrapper.opacity = 0
+            showAnimationAwaitingMappedFrame = true
+            mappedFrameFallbackTimer.restart()
+        }
+
+        function beginShowAnimation() {
+            if (!showAnimationAwaitingMappedFrame) {
+                return
+            }
+
+            showAnimationAwaitingMappedFrame = false
+            mappedFrameFallbackTimer.stop()
+            showAnimationKickoffTimer.restart()
+        }
+
+        function startShowAnimation() {
+            const wasVisible = visible
+            hideAnimation.stop()
+            hideVisibilityDeadlineTimer.stop()
+            keepVisibleWhileAnimating = true
+            if (wasVisible) {
+                armShowAnimation()
+            }
+        }
+
+        function startHideAnimation() {
+            if (!visible) {
+                keepVisibleWhileAnimating = false
+                showAnimationAwaitingMappedFrame = false
+                mappedFrameFallbackTimer.stop()
+                hideVisibilityDeadlineTimer.stop()
+                resetFullscreenContentState()
+                return
+            }
+
+            showAnimation.stop()
+            showAnimationAwaitingMappedFrame = false
+            mappedFrameFallbackTimer.stop()
+            hideAnimation.restart()
+            hideVisibilityDeadlineTimer.restart()
+        }
+
+        visible: launcherRequestedVisible || keepVisibleWhileAnimating
         // Set transparent on kwin will cause abnormal rounded corners in FolderPopup, Bug: 10219
-        color: DesktopIntegration.isTreeLand() ? "transparent" : undefined
+        color: "transparent"
 
         DLayerShellWindow.anchors: DLayerShellWindow.AnchorBottom | DLayerShellWindow.AnchorTop | DLayerShellWindow.AnchorLeft | DLayerShellWindow.AnchorRight
         DLayerShellWindow.layer: DLayerShellWindow.LayerTop
@@ -318,9 +412,53 @@ QtObject {
         DWindow.themeType: ApplicationHelper.DarkType
         DWindow.windowStartUpEffect: PlatformHandle.EffectOut
 
+        Component.onCompleted: {
+            resetFullscreenContentState()
+            keepVisibleWhileAnimating = launcherRequestedVisible
+            visibilityInitialized = true
+        }
+
+        onLauncherRequestedVisibleChanged: {
+            if (!visibilityInitialized) {
+                return
+            }
+
+            if (launcherRequestedVisible) {
+                startShowAnimation()
+            } else {
+                startHideAnimation()
+            }
+        }
+
+        Connections {
+            target: LauncherController
+
+            function onVisibleChanged(visible) {
+                if (!fullscreenFrame.visibilityInitialized
+                        || LauncherController.currentFrame !== "FullscreenFrame") {
+                    return
+                }
+
+                if (visible) {
+                    fullscreenFrame.startShowAnimation()
+                    if (loader.item) {
+                        Qt.callLater(loader.item.activateLauncherInput)
+                    }
+                } else {
+                    fullscreenFrame.startHideAnimation()
+                }
+            }
+        }
+
         onVisibleChanged: {
             if (visible) {
                 updateWindowVisibilityAndPosition()
+                if (loader.item) {
+                    Qt.callLater(loader.item.activateLauncherInput)
+                }
+                if (launcherRequestedVisible) {
+                    armShowAnimation()
+                }
             }
         }
 
@@ -339,32 +477,181 @@ QtObject {
                 LauncherController.cancelHide()
                 return;
             }
-            if (!active && !DebugHelper.avoidHideWindow) {
-                LauncherController.hideWithTimer()
+        }
+
+        Item {
+            id: fullscreenContentWrapper
+            width: fullscreenFrame.screen ? fullscreenFrame.screen.geometry.width : (parent ? parent.width : 0)
+            height: fullscreenFrame.screen ? fullscreenFrame.screen.geometry.height : (parent ? parent.height : 0)
+            enabled: fullscreenFrame.launcherRequestedVisible
+            clip: true
+            transform: [
+                Scale {
+                    id: fullscreenContentScale
+                    origin.x: 0
+                    origin.y: 0
+                    xScale: 1
+                    yScale: 1
+                }
+            ]
+
+            Loader {
+                id: loader
+                anchors.fill: parent
+                focus: true
+                sourceComponent: FullscreenFrame {}
+
+                Label {
+                    visible: DebugHelper.qtDebugEnabled
+                    z: 999
+
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    text: "/ / Under Construction / /"
+
+                    background: Rectangle {
+                        color: Qt.rgba(1, 1, 0, 0.5)
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: { debugDialog.open() }
+                    }
+                }
             }
         }
 
-        Loader {
-            anchors.fill: parent
-            focus: true
-            source: "FullscreenFrame.qml"
+        ParallelAnimation {
+            id: showAnimation
 
-            Label {
-                visible: DebugHelper.qtDebugEnabled
-                z: 999
+            NumberAnimation {
+                target: fullscreenContentWrapper
+                property: "opacity"
+                duration: fullscreenFrame.launchShowAnimationDuration
+                easing.type: Easing.OutCubic
+                to: 1
+            }
 
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                text: "/ / Under Construction / /"
+            NumberAnimation {
+                target: fullscreenContentWrapper
+                property: "x"
+                duration: fullscreenFrame.launchShowAnimationDuration
+                easing.type: Easing.OutCubic
+                to: 0
+            }
 
-                background: Rectangle {
-                    color: Qt.rgba(1, 1, 0, 0.5)
-                }
+            NumberAnimation {
+                target: fullscreenContentWrapper
+                property: "y"
+                duration: fullscreenFrame.launchShowAnimationDuration
+                easing.type: Easing.OutCubic
+                to: 0
+            }
 
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: { debugDialog.open() }
-                }
+            NumberAnimation {
+                target: fullscreenContentScale
+                property: "xScale"
+                duration: fullscreenFrame.launchShowAnimationDuration
+                easing.type: Easing.OutCubic
+                to: 1
+            }
+
+            NumberAnimation {
+                target: fullscreenContentScale
+                property: "yScale"
+                duration: fullscreenFrame.launchShowAnimationDuration
+                easing.type: Easing.OutCubic
+                to: 1
+            }
+
+            onFinished: {
+                fullscreenFrame.keepVisibleWhileAnimating = fullscreenFrame.launcherRequestedVisible
+                fullscreenFrame.resetFullscreenContentState()
+            }
+        }
+
+        ParallelAnimation {
+            id: hideAnimation
+
+            NumberAnimation {
+                target: fullscreenContentWrapper
+                property: "opacity"
+                duration: fullscreenFrame.launchHideAnimationDuration
+                easing.type: Easing.InCubic
+                to: 0
+            }
+
+            NumberAnimation {
+                target: fullscreenContentWrapper
+                property: "x"
+                duration: fullscreenFrame.launchHideAnimationDuration
+                easing.type: Easing.InCubic
+                to: fullscreenFrame.resolvedLaunchSourceRect().x
+            }
+
+            NumberAnimation {
+                target: fullscreenContentWrapper
+                property: "y"
+                duration: fullscreenFrame.launchHideAnimationDuration
+                easing.type: Easing.InCubic
+                to: fullscreenFrame.resolvedLaunchSourceRect().y
+            }
+
+            NumberAnimation {
+                target: fullscreenContentScale
+                property: "xScale"
+                duration: fullscreenFrame.launchHideAnimationDuration
+                easing.type: Easing.InCubic
+                to: fullscreenFrame.resolvedLaunchSourceRect().width / Math.max(1, fullscreenContentWrapper.width)
+            }
+
+            NumberAnimation {
+                target: fullscreenContentScale
+                property: "yScale"
+                duration: fullscreenFrame.launchHideAnimationDuration
+                easing.type: Easing.InCubic
+                to: fullscreenFrame.resolvedLaunchSourceRect().height / Math.max(1, fullscreenContentWrapper.height)
+            }
+
+            onFinished: {
+                fullscreenFrame.finishHideAnimation()
+            }
+        }
+
+        Timer {
+            id: hideVisibilityDeadlineTimer
+            interval: fullscreenFrame.launchHideDeadline
+            repeat: false
+            onTriggered: {
+                hideAnimation.stop()
+                fullscreenFrame.finishHideAnimation()
+            }
+        }
+
+        Timer {
+            id: showAnimationKickoffTimer
+            interval: 0
+            repeat: false
+            onTriggered: {
+                showAnimation.restart()
+            }
+        }
+
+        Timer {
+            id: mappedFrameFallbackTimer
+            interval: fullscreenFrame.frameInterval
+            repeat: false
+            onTriggered: {
+                fullscreenFrame.beginShowAnimation()
+            }
+        }
+
+        Connections {
+            target: fullscreenFrame
+            enabled: fullscreenFrame.showAnimationAwaitingMappedFrame
+
+            function onFrameSwapped() {
+                fullscreenFrame.beginShowAnimation()
             }
         }
     }

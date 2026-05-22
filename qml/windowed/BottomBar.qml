@@ -106,7 +106,7 @@ Control {
             Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
             onClicked: {
                 searchEdit.text = ""
-                LauncherController.currentFrame = "FullscreenFrame"
+                LauncherController.setCurrentFrameToFullscreenFrame()
             }
             KeyNavigation.tab: nextKeyTabTarget
         }

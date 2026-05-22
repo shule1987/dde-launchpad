@@ -35,10 +35,18 @@ int ItemsPageModel::rowCount(const QModelIndex &parent) const
 
 QVariant ItemsPageModel::data(const QModelIndex &index, int role) const
 {
-    Q_UNUSED(index)
-    Q_UNUSED(role)
     qCDebug(logModels) << "Getting data for index" << index.row() << "role" << role;
+    if (role == PageIndexRole) {
+        return index.row();
+    }
     return QVariant();
+}
+
+QHash<int, QByteArray> ItemsPageModel::roleNames() const
+{
+    return {
+        { PageIndexRole, QByteArrayLiteral("pageIndex") }
+    };
 }
 
 void ItemsPageModel::setSourceModel(QAbstractItemModel *model)

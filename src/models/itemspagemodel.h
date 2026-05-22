@@ -17,11 +17,16 @@ class ItemsPageModel : public QAbstractListModel
     Q_PROPERTY(QAbstractItemModel *sourceModel READ sourceModel WRITE setSourceModel NOTIFY sourceModelChanged)
     QML_NAMED_ELEMENT(ItemsPageModel)
 
+    enum Roles {
+        PageIndexRole = Qt::UserRole + 1
+    };
+
 public:
     explicit ItemsPageModel(QObject *parent = nullptr);
 
     Q_INVOKABLE int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+    QHash<int, QByteArray> roleNames() const override;
 
     QAbstractItemModel *sourceModel() { return m_sourceModel; }
     void setSourceModel(QAbstractItemModel *model);
