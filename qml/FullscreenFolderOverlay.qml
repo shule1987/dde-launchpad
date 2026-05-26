@@ -20,6 +20,7 @@ FocusScope {
     property string folderName: "Sample Text"
     property var currentDragItem: null
     property Item backgroundSourceItem: null
+    property Item iconBlurSourceItem: null
     property real contentRevealProgress: 0
     property real backgroundMorphProgress: 0
     property real externalDimProgress: 0
@@ -28,6 +29,8 @@ FocusScope {
     property var sourcePreviewIconRects: []
     property var folderNameFont: DTK.fontManager.t2
     property int cs: 110
+    property real folderCellWidth: cs
+    property real folderCellHeight: cs
     property real startPointX: 0
     property real startPointY: 0
     property point endPoint: Qt.point(width / 2, height / 2)
@@ -44,6 +47,8 @@ FocusScope {
     property real iconMorphProgress: 0
     property bool iconMorphClosing: false
     property bool opened: visible && !closeAnimation.running
+    readonly property bool animationRunning: openAnimation.running || closeAnimation.running
+    property bool folderItemMoveEnabled: false
     property var dndItem: null
     property var focusTarget: null
     property var launchAppFn: null
@@ -53,10 +58,22 @@ FocusScope {
     property var decrementPageIndexFn: null
     property var incrementPageIndexFn: null
     property var refreshBackgroundSourceFn: null
+    property var captureBackgroundSourceFn: null
+    property var prepareContentBlurSourceFn: null
+    property Item folderInternalIconBlurSourceItem: null
     property real backgroundSourceOriginX: 0
     property real backgroundSourceOriginY: 0
+    property real iconBlurSourceOriginX: 0
+    property real iconBlurSourceOriginY: 0
+    property url backgroundSnapshotUrl: ""
+    property url iconBlurSnapshotUrl: ""
+    property bool pendingOpenAfterSnapshot: false
+    property int pendingOpenSnapshotCount: 0
     property int activeAnimationSpeedScale: 1
     property real sourceIconScaleFactor: 1.0
+    readonly property real iconBlurLayerOpacity: 0.5
+    readonly property int sourcePreviewGridSize: 3
+    readonly property int sourcePreviewMaxIcons: sourcePreviewGridSize * sourcePreviewGridSize
 
     signal itemDropped(string dragId)
 
@@ -70,13 +87,13 @@ FocusScope {
     readonly property int contentRevealDelay: 58
     readonly property int contentRevealDuration: 94
     readonly property int backgroundCloseDuration: 132
-    readonly property int dimOpenDuration: 96
+    readonly property int dimOpenDuration: openDuration
     readonly property int dimCloseDuration: 78
     readonly property int contentHideDuration: 78
     readonly property int previewReturnDelay: 18
     readonly property int previewReturnDuration: 92
-    readonly property real panelWidth: cs * 4 + 20
-    readonly property real panelHeight: ((cs * 3) % 2 === 0 ? (cs * 3) : (cs * 3 + 1)) + 130
+    readonly property real panelWidth: folderCellWidth * 4 + 20
+    readonly property real panelHeight: ((folderCellHeight * 3) % 2 === 0 ? (folderCellHeight * 3) : (folderCellHeight * 3 + 1)) + 130
     readonly property real devicePixelRatio: {
         const hostWindow = root.Window.window
         if (hostWindow && hostWindow.devicePixelRatio) {
@@ -104,7 +121,17 @@ FocusScope {
     z: 100
 
     function sourcePreviewCount() {
-        return sourceIcons && sourceIcons.length !== undefined ? Math.min(4, sourceIcons.length) : 0
+        return sourceIcons && sourceIcons.length !== undefined ? Math.min(sourcePreviewMaxIcons, sourceIcons.length) : 0
+    }
+
+    function finishOpenSnapshot() {
+        if (!pendingOpenAfterSnapshot) {
+            return
+        }
+        pendingOpenSnapshotCount = Math.max(0, pendingOpenSnapshotCount - 1)
+        if (pendingOpenSnapshotCount === 0) {
+            deferredOpenTimer.restart()
+        }
     }
 
     function sourcePreviewIconName(index) {
@@ -121,11 +148,11 @@ FocusScope {
             return sourcePreviewIconRects[index]
         }
 
-        const spacing = 8
-        const itemWidth = Math.max(1, (sourceRectWidth - spacing * 3) / 2)
-        const itemHeight = Math.max(1, (sourceRectHeight - spacing * 3) / 2)
-        const column = index % 2
-        const row = Math.floor(index / 2)
+        const spacing = 5
+        const itemWidth = Math.max(1, (sourceRectWidth - spacing * (sourcePreviewGridSize + 1)) / sourcePreviewGridSize)
+        const itemHeight = Math.max(1, (sourceRectHeight - spacing * (sourcePreviewGridSize + 1)) / sourcePreviewGridSize)
+        const column = index % sourcePreviewGridSize
+        const row = Math.floor(index / sourcePreviewGridSize)
         const itemX = sourceRectX + spacing + column * (itemWidth + spacing)
         const itemY = sourceRectY + spacing + row * (itemHeight + spacing)
         const visualScale = Math.max(0.01, (Math.min(itemWidth, itemHeight) / 64) * sourceIconScaleFactor)
@@ -208,9 +235,8 @@ FocusScope {
         LauncherController.updateSlowLaunchAnimationFromKeyboardModifiers()
         activeAnimationSpeedScale = LauncherController.animationSpeedScale
         closeAnimation.stop()
-        if (refreshBackgroundSourceFn) {
-            refreshBackgroundSourceFn()
-        }
+        folderItemMoveEnableTimer.stop()
+        folderItemMoveEnabled = false
         panelX = sourceRectX
         panelY = sourceRectY
         panelCurrentWidth = sourceRectWidth
@@ -222,12 +248,45 @@ FocusScope {
         externalDimProgress = 0
         contentRevealProgress = 0
         sourcePreviewOpacity = sourcePreviewCount() > 0 ? 1 : 0
-        visible = true
-        openAnimation.restart()
-        forceActiveFocus()
+        if (prepareContentBlurSourceFn) {
+            prepareContentBlurSourceFn()
+        }
+        pendingOpenAfterSnapshot = true
+        backgroundSnapshotUrl = ""
+        pendingOpenSnapshotCount = 0
+
+        if (captureBackgroundSourceFn) {
+            pendingOpenSnapshotCount += 1
+            captureBackgroundSourceFn(function(url) {
+                if (!root.pendingOpenAfterSnapshot) {
+                    return
+                }
+                root.backgroundSnapshotUrl = url
+                if (url === "" || backgroundSnapshotImage.status === Image.Ready || backgroundSnapshotImage.status === Image.Error) {
+                    root.finishOpenSnapshot()
+                }
+            })
+        } else if (refreshBackgroundSourceFn) {
+            refreshBackgroundSourceFn()
+        }
+
+        if (pendingOpenSnapshotCount === 0) {
+            deferredOpenTimer.restart()
+        } else {
+            Qt.callLater(function() {
+                if (root.pendingOpenAfterSnapshot && root.pendingOpenSnapshotCount === 0) {
+                    deferredOpenTimer.restart()
+                }
+            })
+        }
     }
 
     function close() {
+        if (deferredOpenTimer.running) {
+            deferredOpenTimer.stop()
+            resetState()
+            return
+        }
         if (!visible) {
             return
         }
@@ -235,6 +294,8 @@ FocusScope {
         LauncherController.updateSlowLaunchAnimationFromKeyboardModifiers()
         activeAnimationSpeedScale = LauncherController.animationSpeedScale
         iconMorphClosing = true
+        folderItemMoveEnableTimer.stop()
+        folderItemMoveEnabled = false
         openAnimation.stop()
         closeAnimation.restart()
     }
@@ -254,6 +315,10 @@ FocusScope {
         panelRadius = sourceCornerRadius
         iconMorphProgress = 0
         iconMorphClosing = false
+        pendingOpenAfterSnapshot = false
+        backgroundSnapshotUrl = ""
+        pendingOpenSnapshotCount = 0
+        folderItemMoveEnabled = false
         sourceIcons = []
         sourcePreviewIconRects = []
         sourceIconScaleFactor = 1.0
@@ -261,8 +326,45 @@ FocusScope {
 
     Keys.onEscapePressed: close()
 
+    Image {
+        id: backgroundSnapshotImage
+        x: -width - 4096
+        y: -height - 4096
+        visible: source !== ""
+        asynchronous: false
+        cache: false
+        source: root.backgroundSnapshotUrl
+        width: root.backgroundSourceItem ? root.backgroundSourceItem.width : root.width
+        height: root.backgroundSourceItem ? root.backgroundSourceItem.height : root.height
+        fillMode: Image.Stretch
+        onStatusChanged: {
+            if (root.pendingOpenAfterSnapshot && (status === Image.Ready || status === Image.Error)) {
+                root.finishOpenSnapshot()
+            }
+        }
+    }
+
+    Image {
+        id: iconBlurSnapshotImage
+        x: -width - 4096
+        y: -height - 4096
+        visible: source !== ""
+        asynchronous: false
+        cache: false
+        source: root.iconBlurSnapshotUrl
+        width: root.iconBlurSourceItem ? root.iconBlurSourceItem.width : root.width
+        height: root.iconBlurSourceItem ? root.iconBlurSourceItem.height : root.height
+        fillMode: Image.Stretch
+        onStatusChanged: {
+            if (root.pendingOpenAfterSnapshot && (status === Image.Ready || status === Image.Error)) {
+                root.finishOpenSnapshot()
+            }
+        }
+    }
+
     ParallelAnimation {
         id: openAnimation
+        onFinished: folderItemMoveEnableTimer.restart()
 
         NumberAnimation {
             target: root
@@ -324,7 +426,7 @@ FocusScope {
             target: root
             property: "externalDimProgress"
             duration: root.animationDuration(root.dimOpenDuration)
-            easing.type: Easing.OutQuad
+            easing.type: Easing.OutQuart
             to: 1
         }
 
@@ -348,6 +450,33 @@ FocusScope {
                 easing.type: Easing.OutQuart
                 to: 1
             }
+        }
+    }
+
+    Timer {
+        id: folderItemMoveEnableTimer
+        interval: root.animationDuration(80)
+        repeat: false
+        onTriggered: {
+            root.folderItemMoveEnabled = root.visible
+                && !root.animationRunning
+                && root.contentRevealProgress >= 1
+                && !root.iconMorphClosing
+        }
+    }
+
+    Timer {
+        id: deferredOpenTimer
+        interval: Math.max(1, Math.round(1000 / 60))
+        repeat: false
+        onTriggered: {
+            if (root.currentFolderId === -1) {
+                return
+            }
+            root.pendingOpenAfterSnapshot = false
+            root.visible = true
+            openAnimation.restart()
+            root.forceActiveFocus()
         }
     }
 
@@ -490,15 +619,23 @@ FocusScope {
                 antialiasing: true
             }
 
+            Rectangle {
+                anchors.fill: parent
+                radius: root.panelRadius
+                color: Qt.rgba(1, 1, 1, 0.10)
+                opacity: root.backgroundMorphProgress
+                antialiasing: true
+            }
+
             Item {
                 id: blurLayer
                 anchors.fill: parent
                 clip: true
-                visible: root.backgroundSourceItem !== null && opacity > 0
+                visible: root.iconBlurSourceItem !== null && opacity > 0
                 opacity: Math.max(0, Math.min(1, (root.backgroundMorphProgress - 0.78) / 0.22))
 
-                readonly property real rawCaptureLeft: folderPanel.x - root.backgroundSourceOriginX
-                readonly property real rawCaptureTop: folderPanel.y - root.backgroundSourceOriginY
+                readonly property real rawCaptureLeft: root.targetPanelX - root.backgroundSourceOriginX
+                readonly property real rawCaptureTop: root.targetPanelY - root.backgroundSourceOriginY
                 readonly property real captureLeft: root.backgroundSourceItem
                     ? Math.max(
                         0,
@@ -516,13 +653,13 @@ FocusScope {
                 readonly property real captureRight: root.backgroundSourceItem
                     ? Math.min(
                         root.backgroundSourceItem.width,
-                        Math.max(captureLeft + 1, rawCaptureLeft + folderPanel.width)
+                        Math.max(captureLeft + 1, rawCaptureLeft + root.panelWidth)
                     )
                     : folderPanel.width
                 readonly property real captureBottom: root.backgroundSourceItem
                     ? Math.min(
                         root.backgroundSourceItem.height,
-                        Math.max(captureTop + 1, rawCaptureTop + folderPanel.height)
+                        Math.max(captureTop + 1, rawCaptureTop + root.panelHeight)
                     )
                     : folderPanel.height
                 readonly property real captureWidth: root.backgroundSourceItem
@@ -537,9 +674,58 @@ FocusScope {
                         captureBottom - captureTop
                     )
                     : Math.max(1, folderPanel.height)
-                readonly property real captureOffsetX: Math.round((captureLeft - rawCaptureLeft) * root.devicePixelRatio)
+                readonly property real captureOffsetX: Math.round((captureLeft - rawCaptureLeft + root.targetPanelX - folderPanel.x) * root.devicePixelRatio)
                     / root.devicePixelRatio
-                readonly property real captureOffsetY: Math.round((captureTop - rawCaptureTop) * root.devicePixelRatio)
+                readonly property real captureOffsetY: Math.round((captureTop - rawCaptureTop + root.targetPanelY - folderPanel.y) * root.devicePixelRatio)
+                    / root.devicePixelRatio
+                readonly property Item effectiveBackgroundSourceItem: backgroundSnapshotImage.status === Image.Ready
+                    ? backgroundSnapshotImage
+                    : root.backgroundSourceItem
+                readonly property Item effectiveIconBlurSourceItem: iconBlurSnapshotImage.status === Image.Ready
+                    ? iconBlurSnapshotImage
+                    : root.iconBlurSourceItem
+                readonly property bool hasIconBlurSource: root.iconBlurSourceItem !== null
+                readonly property bool hasFolderIconBlurSource: root.folderInternalIconBlurSourceItem !== null
+                readonly property point folderIconBlurOrigin: hasFolderIconBlurSource
+                    ? root.folderInternalIconBlurSourceItem.mapToItem(folderPanel, 0, 0)
+                    : Qt.point(0, 0)
+                readonly property real iconRawCaptureLeft: root.targetPanelX - root.iconBlurSourceOriginX
+                readonly property real iconRawCaptureTop: root.targetPanelY - root.iconBlurSourceOriginY
+                readonly property real iconCaptureLeft: hasIconBlurSource
+                    ? Math.max(
+                        0,
+                        Math.round(iconRawCaptureLeft * root.devicePixelRatio)
+                        / root.devicePixelRatio
+                    )
+                    : 0
+                readonly property real iconCaptureTop: hasIconBlurSource
+                    ? Math.max(
+                        0,
+                        Math.round(iconRawCaptureTop * root.devicePixelRatio)
+                        / root.devicePixelRatio
+                    )
+                    : 0
+                readonly property real iconCaptureRight: hasIconBlurSource
+                    ? Math.min(
+                        root.iconBlurSourceItem.width,
+                        Math.max(iconCaptureLeft + 1, iconRawCaptureLeft + root.panelWidth)
+                    )
+                    : folderPanel.width
+                readonly property real iconCaptureBottom: hasIconBlurSource
+                    ? Math.min(
+                        root.iconBlurSourceItem.height,
+                        Math.max(iconCaptureTop + 1, iconRawCaptureTop + root.panelHeight)
+                    )
+                    : folderPanel.height
+                readonly property real iconCaptureWidth: hasIconBlurSource
+                    ? Math.max(1, iconCaptureRight - iconCaptureLeft)
+                    : Math.max(1, folderPanel.width)
+                readonly property real iconCaptureHeight: hasIconBlurSource
+                    ? Math.max(1, iconCaptureBottom - iconCaptureTop)
+                    : Math.max(1, folderPanel.height)
+                readonly property real iconCaptureOffsetX: Math.round((iconCaptureLeft - iconRawCaptureLeft + root.targetPanelX - folderPanel.x) * root.devicePixelRatio)
+                    / root.devicePixelRatio
+                readonly property real iconCaptureOffsetY: Math.round((iconCaptureTop - iconRawCaptureTop + root.targetPanelY - folderPanel.y) * root.devicePixelRatio)
                     / root.devicePixelRatio
 
                 Item {
@@ -548,18 +734,19 @@ FocusScope {
                     y: blurLayer.captureOffsetY
                     width: blurLayer.captureWidth
                     height: blurLayer.captureHeight
+                    visible: false
                     clip: true
 
                     ShaderEffectSource {
                         id: backdropCapture
                         anchors.fill: parent
                         visible: false
-                        live: true
+                        live: false
                         hideSource: false
                         recursive: false
                         smooth: true
-                        mipmap: true
-                        sourceItem: root.backgroundSourceItem
+                        mipmap: false
+                        sourceItem: blurLayer.effectiveBackgroundSourceItem
                         sourceRect: Qt.rect(
                             blurLayer.captureLeft,
                             blurLayer.captureTop,
@@ -590,7 +777,7 @@ FocusScope {
                         anchors.fill: parent
                         source: backdropCapture
                         autoPaddingEnabled: false
-                        blurEnabled: true
+                        blurEnabled: false
                         blurMax: 64
                         blurMultiplier: 0.22
                         blur: 1.0
@@ -599,6 +786,116 @@ FocusScope {
                         maskSource: folderMask
                         maskThresholdMin: 0.5
                         maskSpreadAtMin: 1.0
+                    }
+                }
+
+                Item {
+                    id: capturedIconBlurSurface
+                    x: blurLayer.iconCaptureOffsetX
+                    y: blurLayer.iconCaptureOffsetY
+                    width: blurLayer.iconCaptureWidth
+                    height: blurLayer.iconCaptureHeight
+                    visible: blurLayer.hasIconBlurSource && opacity > 0
+                    opacity: root.iconBlurLayerOpacity
+                    clip: true
+
+                    ShaderEffectSource {
+                        id: iconLayerCapture
+                        anchors.fill: parent
+                        visible: false
+                        live: false
+                        hideSource: false
+                        recursive: false
+                        smooth: true
+                        mipmap: false
+                        sourceItem: blurLayer.effectiveIconBlurSourceItem
+                        sourceRect: Qt.rect(
+                            blurLayer.iconCaptureLeft,
+                            blurLayer.iconCaptureTop,
+                            blurLayer.iconCaptureWidth,
+                            blurLayer.iconCaptureHeight
+                        )
+                        textureSize: Qt.size(
+                            Math.max(64, Math.ceil(root.panelWidth * root.devicePixelRatio)),
+                            Math.max(64, Math.ceil(root.panelHeight * root.devicePixelRatio))
+                        )
+                    }
+
+                    Item {
+                        id: iconLayerMask
+                        anchors.fill: parent
+                        visible: false
+                        layer.enabled: true
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: root.panelRadius
+                            color: "#FFFFFFFF"
+                            antialiasing: true
+                        }
+                    }
+
+                    MultiEffect {
+                        anchors.fill: parent
+                        source: iconLayerCapture
+                        autoPaddingEnabled: false
+                        blurEnabled: true
+                        blurMax: 64
+                        blurMultiplier: 0.22
+                        blur: 1.0
+                        saturation: 1.0
+                        maskEnabled: true
+                        maskSource: iconLayerMask
+                        maskThresholdMin: 0.5
+                        maskSpreadAtMin: 1.0
+                    }
+                }
+
+                Item {
+                    id: capturedFolderIconBlurSurface
+                    x: blurLayer.folderIconBlurOrigin.x
+                    y: blurLayer.folderIconBlurOrigin.y
+                    width: root.folderInternalIconBlurSourceItem
+                        ? root.folderInternalIconBlurSourceItem.width
+                        : 1
+                    height: root.folderInternalIconBlurSourceItem
+                        ? root.folderInternalIconBlurSourceItem.height
+                        : 1
+                    visible: false
+                    opacity: root.iconBlurLayerOpacity * root.contentRevealProgress
+                    clip: true
+
+                    ShaderEffectSource {
+                        id: folderIconLayerCapture
+                        anchors.fill: parent
+                        visible: false
+                        live: root.visible
+                        hideSource: false
+                        recursive: false
+                        smooth: true
+                        mipmap: false
+                        sourceItem: root.folderInternalIconBlurSourceItem
+                        sourceRect: Qt.rect(
+                            0,
+                            0,
+                            capturedFolderIconBlurSurface.width,
+                            capturedFolderIconBlurSurface.height
+                        )
+                        textureSize: Qt.size(
+                            Math.max(64, Math.ceil(capturedFolderIconBlurSurface.width * root.devicePixelRatio)),
+                            Math.max(64, Math.ceil(capturedFolderIconBlurSurface.height * root.devicePixelRatio))
+                        )
+                    }
+
+                    MultiEffect {
+                        anchors.fill: parent
+                        source: folderIconLayerCapture
+                        autoPaddingEnabled: false
+                        blurEnabled: true
+                        blurMax: 64
+                        blurMultiplier: 0.22
+                        blur: 1.0
+                        saturation: 1.0
                     }
                 }
             }
@@ -615,7 +912,7 @@ FocusScope {
             Rectangle {
                 anchors.fill: parent
                 radius: root.panelRadius
-                color: Qt.rgba(1, 1, 1, 0.08)
+                color: "transparent"
                 opacity: root.backgroundMorphProgress
                 antialiasing: true
                 border.width: 1
@@ -631,17 +928,17 @@ FocusScope {
                 opacity: root.sourcePreviewOpacity * Math.max(0, 1 - root.contentRevealProgress * 4)
                 scale: 0.975 + (root.sourcePreviewOpacity * 0.025)
 
-                readonly property real previewSpacing: Math.max(4, Math.round(width * 0.08))
-                readonly property real previewItemWidth: Math.max(1, (width - previewSpacing * 3) / 2)
-                readonly property real previewItemHeight: Math.max(1, (height - previewSpacing * 3) / 2)
+                readonly property real previewSpacing: 5
+                readonly property real previewItemWidth: Math.max(1, (width - previewSpacing * (root.sourcePreviewGridSize + 1)) / root.sourcePreviewGridSize)
+                readonly property real previewItemHeight: Math.max(1, (height - previewSpacing * (root.sourcePreviewGridSize + 1)) / root.sourcePreviewGridSize)
 
                 function itemX(index) {
-                    const column = index % 2
+                    const column = index % root.sourcePreviewGridSize
                     return previewSpacing + column * (previewItemWidth + previewSpacing)
                 }
 
                 function itemY(index) {
-                    const row = Math.floor(index / 2)
+                    const row = Math.floor(index / root.sourcePreviewGridSize)
                     return previewSpacing + row * (previewItemHeight + previewSpacing)
                 }
 
@@ -678,10 +975,12 @@ FocusScope {
             id: folderLoader
 
             active: root.currentFolderId !== -1
+                    && (root.contentRevealProgress > 0 || closeAnimation.running)
             anchors.fill: parent
 
             sourceComponent: Item {
                 anchors.fill: parent
+                opacity: root.contentRevealProgress
 
                 DropArea {
                     anchors.fill: parent
@@ -997,11 +1296,18 @@ FocusScope {
                                                 rows: 3
                                                 columns: 4
                                                 model: sortProxyModel
+                                                cellWidth: root.folderCellWidth
+                                                cellHeight: root.folderCellHeight
+                                                compactCentered: true
+                                                compactItemCount: sortProxyModel.count !== undefined
+                                                    ? sortProxyModel.count
+                                                    : (sortProxyModel.rowCount ? sortProxyModel.rowCount() : 0)
                                                 padding: 10
                                                 interactive: false
                                                 focus: true
                                                 gridViewClip: false
                                                 activeGridViewFocusOnTab: folderGridViewLoader.SwipeView.isCurrentItem
+                                                itemTransitionsEnabled: root.folderItemMoveEnabled
                                                 itemMove: gridViewContainerLoader.itemMove
 
                                                 onActiveFocusChanged: {
@@ -1243,6 +1549,8 @@ FocusScope {
                                 visible: index !== folderPageIndicator.currentIndex
                                 radius: parent.radius
                                 sourceItem: root.backgroundSourceItem
+                                live: false
+                                textureScale: 0.5
                                 tintColor: Qt.rgba(1, 1, 1, pressed ? 0.14 : 0.08)
                                 borderColor: Qt.rgba(1, 1, 1, 0.12)
                             }

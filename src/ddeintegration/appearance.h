@@ -12,6 +12,7 @@ class Appearance : public QObject
 {
     Q_OBJECT
 
+    Q_PROPERTY(QString wallpaperUrl READ wallpaperUrl NOTIFY wallpaperUrlChanged)
     Q_PROPERTY(QString wallpaperBlurhash READ wallpaperBlurhash NOTIFY wallpaperBlurhashChanged)
     Q_PROPERTY(qreal opacity READ opacity NOTIFY opacityChanged FINAL)
 
@@ -20,6 +21,7 @@ public:
     ~Appearance();
 
     QString wallpaperBlurhash() const;
+    QString wallpaperUrl() const;
 
     qreal opacity() const;
     void setOpacity(qreal newOpacity);
@@ -28,6 +30,7 @@ public:
 
 signals:
     void wallpaperBlurhashChanged();
+    void wallpaperUrlChanged();
 
     void opacityChanged();
 
@@ -38,6 +41,7 @@ private:
     __Appearance1 * m_dbusAppearanceIface;
 
     QString m_wallpaperBlurhash;
+    QString m_wallpaperUrl;
     QList<QFutureWatcher<QString> *> m_blurhashWatchers;
     QMap<QUrl, QString> m_wallpaperBlurMap; // { file:blurhash }
     qreal m_opacity = -1;

@@ -26,10 +26,13 @@ FocusScope {
     property bool activeGridViewFocusOnTab: false
     property bool alwaysShowHighlighted: false
     property Transition itemMove
+    property bool itemTransitionsEnabled: true
     required property int columns
     required property int rows
     property real paddingColumns: 0
     property real paddingRows: paddingColumns
+    property bool compactCentered: false
+    property int compactItemCount: gridView.count
     property alias cellHeight: item.cellHeight
     property alias cellWidth: item.cellWidth
 
@@ -60,22 +63,38 @@ FocusScope {
         visible: true
         anchors.fill: parent
 
+        readonly property real availableGridWidth: root.compactCentered
+            ? Math.max(1, width - root.paddingColumns * Math.max(0, root.columns - 1))
+            : width
+        readonly property real availableGridHeight: root.compactCentered
+            ? Math.max(1, height - root.paddingRows * Math.max(0, root.rows - 1))
+            : height
         property int cellHeight: root.rows == 0
-            ? (width / (root.columns + root.paddingColumns * 2))
-            : Math.min(width / (root.columns + root.paddingColumns * 2), height / Math.max(1, root.rows + root.paddingRows * 2))
+            ? (availableGridWidth / (root.columns + (root.compactCentered ? 0 : root.paddingColumns * 2)))
+            : Math.min(availableGridWidth / (root.columns + (root.compactCentered ? 0 : root.paddingColumns * 2)),
+                       availableGridHeight / Math.max(1, root.rows + (root.compactCentered ? 0 : root.paddingRows * 2)))
         property int cellWidth: cellHeight
+        readonly property real gridCellWidth: cellWidth + (root.compactCentered ? root.paddingColumns : 0)
+        readonly property real gridCellHeight: cellHeight + (root.compactCentered ? root.paddingRows : 0)
+        readonly property int visibleColumns: root.compactCentered && root.compactItemCount > 0
+            ? Math.min(root.columns, root.compactItemCount)
+            : root.columns
+        readonly property int visibleRows: root.compactCentered && root.compactItemCount > 0
+            ? Math.min(root.rows, Math.ceil(root.compactItemCount / Math.max(1, root.columns)))
+            : root.rows
         Rectangle {
-            anchors.centerIn: parent
+            x: Math.round((parent.width - width) / 2)
+            y: root.compactCentered ? 0 : Math.round((parent.height - height) / 2)
             width: {
-                if (root.objectName === "folderGridViewContainer") {
-                    return item.cellWidth * root.columns + root.paddingColumns * Math.max(0, root.columns - 1) + root.paddingColumns
+                if (root.compactCentered) {
+                    return item.cellWidth * item.visibleColumns + root.paddingColumns * Math.max(0, item.visibleColumns - 1)
                 } else {
                     return item.cellWidth * root.columns
                 }
             }
             height: {
-                if (root.objectName === "folderGridViewContainer") {
-                    return item.cellHeight * root.rows + root.paddingRows * Math.max(0, root.rows - 1)
+                if (root.compactCentered) {
+                    return item.cellHeight * item.visibleRows + root.paddingRows * Math.max(0, item.visibleRows - 1)
                 } else {
                     return root.rows == 0 ? parent.height : (item.cellHeight * root.rows)
                 }
@@ -105,8 +124,8 @@ FocusScope {
                         gridView.preferredHighlightBegin = preferredHighlightBegin
                     }
                 }
-                cellHeight: item.cellHeight
-                cellWidth: item.cellWidth
+                cellHeight: item.gridCellHeight
+                cellWidth: item.gridCellWidth
                 TapHandler {
                     onTapped:
                         LauncherController.visible = false
@@ -134,11 +153,11 @@ FocusScope {
                 }
 
                 // Keep item reflow smooth during drag-reorder and folder insert/remove.
-                add: root.itemMove
-                move: root.itemMove
-                remove: root.itemMove
-                displaced: root.itemMove
-                moveDisplaced: root.itemMove
+                add: root.itemTransitionsEnabled ? root.itemMove : null
+                move: root.itemTransitionsEnabled ? root.itemMove : null
+                remove: root.itemTransitionsEnabled ? root.itemMove : null
+                displaced: root.itemTransitionsEnabled ? root.itemMove : null
+                moveDisplaced: root.itemTransitionsEnabled ? root.itemMove : null
             }
         }
 

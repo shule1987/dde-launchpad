@@ -19,6 +19,8 @@ Item {
     required property int searchResultCount
     required property Item glassSourceItem
     required property real glassSampleRevision
+    required property bool glassLive
+    required property bool glassEffect
 
     property alias searchEdit: searchEdit
 
@@ -73,6 +75,9 @@ Item {
             radius: 12
             sourceItem: root.glassSourceItem
             sampleRevision: root.glassSampleRevision
+            live: root.glassLive
+            effectEnabled: root.glassEffect
+            textureScale: 0.5
             tintColor: Qt.rgba(1, 1, 1, 0.08)
             borderColor: Qt.rgba(1, 1, 1, 0.12)
         }

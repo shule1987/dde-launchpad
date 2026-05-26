@@ -20,6 +20,7 @@ class DesktopIntegration : public QObject
     Q_PROPERTY(QRect dockGeometry READ dockGeometry NOTIFY dockGeometryChanged)
     Q_PROPERTY(uint dockSpacing READ dockSpacing NOTIFY dockSpacingChanged)
     Q_PROPERTY(QString backgroundUrl READ backgroundUrl NOTIFY backgroundUrlChanged)
+    Q_PROPERTY(QString wallpaperUrl READ wallpaperUrl NOTIFY wallpaperUrlChanged)
     Q_PROPERTY(qreal opacity READ opacity NOTIFY opacityChanged FINAL)
     Q_PROPERTY(double scaleFactor READ scaleFactor NOTIFY scaleFactorChanged FINAL)
     Q_PROPERTY(qreal iconScaleFactor READ iconScaleFactor WRITE setIconScaleFactor NOTIFY iconScaleFactorChanged FINAL)
@@ -57,6 +58,7 @@ public:
     QRect dockGeometry() const;
     uint dockSpacing() const;
     QString backgroundUrl() const;
+    QString wallpaperUrl() const;
 
     Q_INVOKABLE bool isDockedApp(const QString & desktopId) const;
     Q_INVOKABLE void sendToDock(const QString & desktopId);
@@ -78,6 +80,7 @@ signals:
     void dockGeometryChanged();
     void dockSpacingChanged();
     void backgroundUrlChanged();
+    void wallpaperUrlChanged();
     void opacityChanged();
     void scaleFactorChanged();
     void iconScaleFactorChanged();

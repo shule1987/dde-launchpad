@@ -33,6 +33,10 @@ AppletItem {
     implicitHeight: useColumnLayout ? Panel.rootObject.dockItemMaxSize * 0.8 : Panel.rootObject.dockSize
 
     function toggleLauncher() {
+        if (fullscreenFrame.launchAnimationRunning) {
+            return
+        }
+
         assignFullscreenFrameScreen()
         updateFullscreenLaunchSourceRect()
         LauncherController.toggleFromDock()
@@ -301,6 +305,7 @@ AppletItem {
         readonly property int launchHideAnimationDuration: 200 * launchAnimationSpeedScale
         readonly property int launchBackdropAnimationDuration: 180 * launchAnimationSpeedScale
         readonly property int launchGridMotionMaxDelay: 30 * launchAnimationSpeedScale
+        readonly property int launchShowDeadline: launchShowAnimationDuration + launchGridMotionMaxDelay + frameInterval * 4
         readonly property int launchHideDeadline: launchHideAnimationDuration + launchGridMotionMaxDelay + frameInterval * 2
         readonly property bool launchAnimationRunning: showAnimation.running || hideAnimation.running || showAnimationAwaitingMappedFrame
         readonly property bool launchAnimationProxyVisible: showAnimation.running || hideAnimation.running
@@ -355,9 +360,27 @@ AppletItem {
             }
         }
 
+        function finishShowAnimation() {
+            showVisibilityDeadlineTimer.stop()
+            mappedFrameFallbackTimer.stop()
+            showAnimationKickoffTimer.stop()
+            showAnimationAwaitingMappedFrame = false
+            keepVisibleWhileAnimating = launcherRequestedVisible
+            resetFullscreenContentState()
+            if (fullscreenFrameLoader.item) {
+                fullscreenFrameLoader.item.launchTransitionActive = false
+                fullscreenFrameLoader.item.iconGridMotionHiding = false
+                fullscreenFrameLoader.item.refreshGlassSnapshotAfterSettled()
+            }
+        }
+
         function finishHideAnimation() {
             hideVisibilityDeadlineTimer.stop()
+            showVisibilityDeadlineTimer.stop()
             showAnimationAwaitingMappedFrame = false
+            if (fullscreenFrameLoader.item) {
+                fullscreenFrameLoader.item.launchTransitionActive = false
+            }
             if (!launcherRequestedVisible) {
                 keepVisibleWhileAnimating = false
                 resetFullscreenContentState()
@@ -368,6 +391,9 @@ AppletItem {
         function armShowAnimation() {
             LauncherController.updateSlowLaunchAnimationFromKeyboardModifiers()
             activeLaunchAnimationSpeedScale = LauncherController.animationSpeedScale
+            if (fullscreenFrameLoader.item) {
+                fullscreenFrameLoader.item.launchTransitionActive = true
+            }
             showAnimation.stop()
             hideAnimation.stop()
             showAnimationKickoffTimer.stop()
@@ -385,6 +411,7 @@ AppletItem {
                 launchAnimationForegroundSnapshotItem.scheduleUpdate()
             }
             showAnimationAwaitingMappedFrame = true
+            showVisibilityDeadlineTimer.restart()
             if (active) {
                 beginShowAnimation()
             } else {
@@ -400,6 +427,9 @@ AppletItem {
             if (!launcherRequestedVisible || !visible) {
                 showAnimationAwaitingMappedFrame = false
                 mappedFrameFallbackTimer.stop()
+                if (fullscreenFrameLoader.item) {
+                    fullscreenFrameLoader.item.launchTransitionActive = false
+                }
                 resetFullscreenContentState()
                 return
             }
@@ -427,11 +457,17 @@ AppletItem {
             LauncherController.updateSlowLaunchAnimationFromKeyboardModifiers()
             activeLaunchAnimationSpeedScale = LauncherController.animationSpeedScale
             keepVisibleWhileAnimating = true
+            if (fullscreenFrameLoader.item) {
+                fullscreenFrameLoader.item.launchTransitionActive = true
+            }
             if (!visible) {
                 keepVisibleWhileAnimating = false
                 showAnimationAwaitingMappedFrame = false
                 mappedFrameFallbackTimer.stop()
                 hideVisibilityDeadlineTimer.stop()
+                if (fullscreenFrameLoader.item) {
+                    fullscreenFrameLoader.item.launchTransitionActive = false
+                }
                 resetFullscreenContentState()
                 return
             }
@@ -440,6 +476,7 @@ AppletItem {
             showAnimation.stop()
             showAnimationAwaitingMappedFrame = false
             mappedFrameFallbackTimer.stop()
+            showVisibilityDeadlineTimer.stop()
             resetFullscreenContentState()
             if (launchAnimationForegroundSnapshotItem) {
                 launchAnimationForegroundSnapshotItem.scheduleUpdate()
@@ -513,12 +550,9 @@ AppletItem {
                 }
 
                 if (visible) {
-                    fullscreenFrame.startShowAnimation()
                     if (fullscreenFrameLoader.item) {
                         Qt.callLater(fullscreenFrameLoader.item.activateLauncherInput)
                     }
-                } else {
-                    fullscreenFrame.startHideAnimation()
                 }
             }
 
@@ -530,7 +564,10 @@ AppletItem {
                 if (fullscreenFrameLoader.item) {
                     Qt.callLater(fullscreenFrameLoader.item.activateLauncherInput)
                 }
-                if (launcherRequestedVisible) {
+                if (launcherRequestedVisible
+                        && !showAnimation.running
+                        && !hideAnimation.running
+                        && !showAnimationAwaitingMappedFrame) {
                     armShowAnimation()
                 }
             }
@@ -548,6 +585,11 @@ AppletItem {
                 return;
             }
             if (!active && !DebugHelper.avoidHideWindow) {
+                if (launchAnimationRunning
+                    || (launcherRequestedVisible
+                        && Date.now() - lastShowAnimationStartMs < Math.max(320, launchShowAnimationDuration + frameInterval * 4))) {
+                    return
+                }
                 LauncherController.hideWithTimer()
             }
         }
@@ -586,42 +628,37 @@ AppletItem {
         ParallelAnimation {
             id: showAnimation
 
-            NumberAnimation {
+            OpacityAnimator {
                 target: fullscreenFrame.launchAnimationBackdropItem
-                property: "opacity"
                 duration: fullscreenFrame.launchBackdropAnimationDuration
                 easing.type: Easing.OutQuad
                 to: 1
             }
 
-            NumberAnimation {
+            OpacityAnimator {
                 target: fullscreenFrame.launchAnimationForegroundItem
-                property: "opacity"
                 duration: Math.round(fullscreenFrame.launchShowAnimationDuration * 0.86)
                 easing.type: Easing.OutQuad
                 to: 1
             }
 
             onFinished: {
-                fullscreenFrame.keepVisibleWhileAnimating = fullscreenFrame.launcherRequestedVisible
-                fullscreenFrame.resetFullscreenContentState()
+                fullscreenFrame.finishShowAnimation()
             }
         }
 
         ParallelAnimation {
             id: hideAnimation
 
-            NumberAnimation {
+            OpacityAnimator {
                 target: fullscreenFrame.launchAnimationBackdropItem
-                property: "opacity"
                 duration: fullscreenFrame.launchBackdropAnimationDuration
                 easing.type: Easing.InQuad
                 to: 0
             }
 
-            NumberAnimation {
+            OpacityAnimator {
                 target: fullscreenFrame.launchAnimationForegroundItem
-                property: "opacity"
                 duration: fullscreenFrame.launchHideAnimationDuration
                 easing.type: Easing.InQuad
                 to: 0
@@ -639,6 +676,16 @@ AppletItem {
             onTriggered: {
                 hideAnimation.stop()
                 fullscreenFrame.finishHideAnimation()
+            }
+        }
+
+        Timer {
+            id: showVisibilityDeadlineTimer
+            interval: fullscreenFrame.launchShowDeadline
+            repeat: false
+            onTriggered: {
+                showAnimation.stop()
+                fullscreenFrame.finishShowAnimation()
             }
         }
 
@@ -807,6 +854,10 @@ AppletItem {
                     return
                 }
                 if (now - launcher.lastPanelEdgeToggleMs < launcher.crossSourceToggleGuardInterval) {
+                    mouse.accepted = true
+                    return
+                }
+                if (fullscreenFrame.launchAnimationRunning) {
                     mouse.accepted = true
                     return
                 }

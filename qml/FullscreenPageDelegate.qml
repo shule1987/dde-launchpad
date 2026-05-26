@@ -4,6 +4,7 @@
 
 import QtQml.Models 2.15
 import QtQuick 2.15
+import QtQuick.Window 2.15
 
 import org.deepin.launchpad 1.0
 import org.deepin.launchpad.models 1.0
@@ -25,6 +26,8 @@ FocusScope {
     required property real iconScaleFactor
     required property Item glassSourceItem
     required property real glassSampleRevision
+    required property bool glassLive
+    required property bool glassEffect
     required property var launchAppFn
     required property var showContextMenuFn
     required property var getCategoryNameFn
@@ -32,6 +35,7 @@ FocusScope {
     readonly property int viewIndex: pageIndex
     property alias gridViewIndex: gridViewContainer.currentIndex
     property int launchGridMotionSerial: 0
+    property bool launchGridMotionHiding: false
     property string pendingLiveReorderKey: ""
     property string pendingLiveReorderDragId: ""
     property string pendingLiveReorderDropId: ""
@@ -95,6 +99,7 @@ FocusScope {
 
     onIconGridMotionSerialChanged: {
         if (root.ListView.isCurrentItem) {
+            launchGridMotionHiding = iconGridMotionHiding
             launchGridMotionSerial = iconGridMotionSerial
         }
     }
@@ -215,8 +220,7 @@ FocusScope {
             Keys.forwardTo: [iconItemDelegate]
 
             property bool isDragHover: false
-            property int activeGridMotionSerial: root.launchGridMotionSerial
-            property real gridMotionProgress: 1
+            readonly property int activeGridMotionSerial: root.launchGridMotionSerial
             readonly property int gridColumn: index % 7
             readonly property int gridRow: Math.floor(index / 7)
             readonly property int gridRing: Math.floor(Math.max(Math.abs(gridColumn - 3), Math.abs(gridRow - 1.5)))
@@ -224,15 +228,29 @@ FocusScope {
             readonly property real gatherStrength: 0.22
             readonly property real gatherOffsetX: (gridViewContainer.width / 2 - (x + width / 2)) * gatherStrength
             readonly property real gatherOffsetY: (gridViewContainer.height / 2 - (y + height / 2)) * gatherStrength
+            readonly property real devicePixelRatio: Screen.devicePixelRatio ? Screen.devicePixelRatio : 1
+            property bool gridMotionHidingSnapshot: false
+            property int gridMotionSpeedScaleSnapshot: 1
+            property int gridMotionDelaySnapshot: 0
+            property real gridMotionFromX: 5
+            property real gridMotionToX: 5
+            property real gridMotionFromY: 5
+            property real gridMotionToY: 5
+            property real gridMotionFromScale: 1
+            property real gridMotionToScale: 1
+            property real gridMotionFromOpacity: 1
+            property real gridMotionToOpacity: 1
+            property real gridMotionScale: 1
+            property real gridMotionOpacity: 1
 
             visible: !root.folderGridViewPopup.visible
                      || root.folderGridViewPopup.currentFolderId !== Number(model.desktopId.replace("internal/folders/", ""))
             width: gridViewContainer.cellWidth
             height: gridViewContainer.cellHeight
 
-            onActiveGridMotionSerialChanged: {
-                if (activeGridMotionSerial > 0) {
-                    gridMotionAnim.restart()
+            onVisibleChanged: {
+                if (visible && !gridMotionAnim.running) {
+                    resetGridMotionVisualState()
                 }
             }
 
@@ -279,6 +297,37 @@ FocusScope {
                 root.commitDropOnItem(dragId, model.desktopId, op)
             }
 
+            function roundToDevicePixel(value) {
+                return Math.round(value * devicePixelRatio) / devicePixelRatio
+            }
+
+            function prepareGridMotion() {
+                const hiding = root.launchGridMotionHiding
+                const speedScale = root.iconGridMotionSpeedScale
+                gridMotionHidingSnapshot = hiding
+                gridMotionSpeedScaleSnapshot = speedScale
+                gridMotionDelaySnapshot = (hiding ? (maxGridRing - gridRing) : gridRing) * 10 * speedScale
+                gridMotionFromX = roundToDevicePixel(hiding ? 5 : 5 + gatherOffsetX)
+                gridMotionToX = roundToDevicePixel(hiding ? 5 + gatherOffsetX : 5)
+                gridMotionFromY = roundToDevicePixel(hiding ? 5 : 5 + gatherOffsetY)
+                gridMotionToY = roundToDevicePixel(hiding ? 5 + gatherOffsetY : 5)
+                gridMotionFromScale = hiding ? 1 : 0.96
+                gridMotionToScale = hiding ? 0.96 : 1
+                gridMotionFromOpacity = hiding ? 1 : 0
+                gridMotionToOpacity = hiding ? 0 : 1
+                iconMotionWrapper.x = gridMotionFromX
+                iconMotionWrapper.y = gridMotionFromY
+                gridMotionScale = gridMotionFromScale
+                gridMotionOpacity = gridMotionFromOpacity
+            }
+
+            function resetGridMotionVisualState() {
+                iconMotionWrapper.x = 5
+                iconMotionWrapper.y = 5
+                gridMotionScale = 1
+                gridMotionOpacity = 1
+            }
+
             onEntered: function(drag) {
                 if (root.folderGridViewPopup.opened) {
                     root.folderGridViewPopup.close()
@@ -320,9 +369,14 @@ FocusScope {
                 id: iconMotionWrapper
                 width: parent.width - 10
                 height: parent.height - 10
-                x: 5 + delegateRoot.gatherOffsetX * (1 - delegateRoot.gridMotionProgress)
-                y: 5 + delegateRoot.gatherOffsetY * (1 - delegateRoot.gridMotionProgress)
-                opacity: root.dndItem.currentlyDraggedId !== model.desktopId ? 1 : 0
+                x: 5
+                y: 5
+                opacity: root.dndItem.currentlyDraggedId !== model.desktopId ? delegateRoot.gridMotionOpacity : 0
+                scale: delegateRoot.gridMotionScale
+                transformOrigin: Item.Center
+                layer.enabled: gridMotionAnim.running
+                layer.smooth: true
+                layer.mipmap: true
 
                 IconItemDelegate {
                     id: iconItemDelegate
@@ -336,6 +390,8 @@ FocusScope {
                     iconScaleFactor: root.iconScaleFactor
                     glassSourceItem: root.glassSourceItem
                     glassSampleRevision: root.glassSampleRevision + root.pageView.contentX
+                    glassLive: root.glassLive
+                    glassEffect: root.glassEffect
                     transformOrigin: Item.Center
 
                     onItemClicked: root.launchAppFn(desktopId)
@@ -350,11 +406,9 @@ FocusScope {
                         root.folderGridViewPopup.sourceRectHeight = folderRect.height
                         root.folderGridViewPopup.sourceCornerRadius = iconItemDelegate.folderBackgroundRadius
                         root.folderGridViewPopup.sourceIconScaleFactor = root.iconScaleFactor
-                        root.folderGridViewPopup.sourceIcons = folderIcons ? folderIcons : []
+                        root.folderGridViewPopup.sourceIcons = iconItemDelegate.folderPreviewIcons()
                         const sourcePreviewIconRects = []
-                        const sourcePreviewCount = folderIcons && folderIcons.length !== undefined
-                            ? Math.min(4, folderIcons.length)
-                            : 0
+                        const sourcePreviewCount = root.folderGridViewPopup.sourceIcons.length
                         for (let i = 0; i < sourcePreviewCount; ++i) {
                             sourcePreviewIconRects.push(iconItemDelegate.folderPreviewIconVisualRect(i, root.mapTarget))
                         }
@@ -378,27 +432,56 @@ FocusScope {
                 }
             }
 
+            onActiveGridMotionSerialChanged: {
+                if (activeGridMotionSerial > 0) {
+                    prepareGridMotion()
+                    gridMotionAnim.restart()
+                }
+            }
+
             SequentialAnimation {
                 id: gridMotionAnim
 
-                ScriptAction {
-                    script: {
-                        gridMotionProgress = root.iconGridMotionHiding ? 1 : 0
-                    }
-                }
-
                 PauseAnimation {
-                    duration: (root.iconGridMotionHiding
-                        ? (delegateRoot.maxGridRing - delegateRoot.gridRing)
-                        : delegateRoot.gridRing) * 10 * root.iconGridMotionSpeedScale
+                    duration: delegateRoot.gridMotionDelaySnapshot
                 }
 
-                NumberAnimation {
-                    target: delegateRoot
-                    property: "gridMotionProgress"
-                    duration: 200 * root.iconGridMotionSpeedScale
-                    easing.type: root.iconGridMotionHiding ? Easing.InCubic : Easing.OutCubic
-                    to: root.iconGridMotionHiding ? 0 : 1
+                ParallelAnimation {
+                    NumberAnimation {
+                        target: iconMotionWrapper
+                        property: "x"
+                        duration: 200 * delegateRoot.gridMotionSpeedScaleSnapshot
+                        easing.type: delegateRoot.gridMotionHidingSnapshot ? Easing.InCubic : Easing.OutCubic
+                        from: delegateRoot.gridMotionFromX
+                        to: delegateRoot.gridMotionToX
+                    }
+
+                    NumberAnimation {
+                        target: iconMotionWrapper
+                        property: "y"
+                        duration: 200 * delegateRoot.gridMotionSpeedScaleSnapshot
+                        easing.type: delegateRoot.gridMotionHidingSnapshot ? Easing.InCubic : Easing.OutCubic
+                        from: delegateRoot.gridMotionFromY
+                        to: delegateRoot.gridMotionToY
+                    }
+
+                    NumberAnimation {
+                        target: delegateRoot
+                        property: "gridMotionScale"
+                        duration: 200 * delegateRoot.gridMotionSpeedScaleSnapshot
+                        easing.type: delegateRoot.gridMotionHidingSnapshot ? Easing.InCubic : Easing.OutCubic
+                        from: delegateRoot.gridMotionFromScale
+                        to: delegateRoot.gridMotionToScale
+                    }
+
+                    NumberAnimation {
+                        target: delegateRoot
+                        property: "gridMotionOpacity"
+                        duration: 200 * delegateRoot.gridMotionSpeedScaleSnapshot
+                        easing.type: delegateRoot.gridMotionHidingSnapshot ? Easing.InCubic : Easing.OutCubic
+                        from: delegateRoot.gridMotionFromOpacity
+                        to: delegateRoot.gridMotionToOpacity
+                    }
                 }
             }
         }

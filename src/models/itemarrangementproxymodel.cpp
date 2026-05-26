@@ -168,11 +168,11 @@ QVariant ItemArrangementProxyModel::data(const QModelIndex &index, int role) con
             case FolderIdNumberRole:
                 return folder;
             case IconsNameRole: {
-                const QStringList desktopIds = m_folders.value(id)->firstNItems(4);
+                const QStringList desktopIds = m_folders.value(id)->firstNItems(9);
                 QStringList icons;
                 for (const QString & id : desktopIds) {
                     AppItem * item = AppsModel::instance().itemFromDesktopId(id);
-                    if (item) {
+                    if (item && !item->iconName().isEmpty()) {
                         icons.append(item->iconName());
                     }
                 }

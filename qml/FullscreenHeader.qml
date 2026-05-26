@@ -15,6 +15,8 @@ Item {
     required property var pageView
     required property Item glassSourceItem
     required property real glassSampleRevision
+    required property bool glassLive
+    required property bool glassEffect
 
     signal exitRequested()
     height: bandHeight
@@ -52,6 +54,9 @@ Item {
             radius: 20
             sourceItem: root.glassSourceItem
             sampleRevision: root.glassSampleRevision
+            live: root.glassLive
+            effectEnabled: root.glassEffect
+            textureScale: 0.5
             brightness: exitFullscreenBtn.down ? -0.1 : exitFullscreenBtn.hovered ? 0.2 : 0.0
             tintColor: Qt.rgba(1, 1, 1, exitFullscreenBtn.down ? 0.16 : exitFullscreenBtn.hovered ? 0.12 : 0.08)
             borderColor: Qt.rgba(1, 1, 1, 0.12)
@@ -88,6 +93,9 @@ Item {
                 radius: parent.radius
                 sourceItem: root.glassSourceItem
                 sampleRevision: root.glassSampleRevision
+                live: root.glassLive
+                effectEnabled: root.glassEffect
+                textureScale: 0.5
                 tintColor: Qt.rgba(1, 1, 1, pressed ? 0.14 : 0.08)
                 borderColor: Qt.rgba(1, 1, 1, 0.12)
             }

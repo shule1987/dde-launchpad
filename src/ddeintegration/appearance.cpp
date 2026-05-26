@@ -58,6 +58,11 @@ QString Appearance::wallpaperBlurhash() const
     return m_wallpaperBlurhash;
 }
 
+QString Appearance::wallpaperUrl() const
+{
+    return m_wallpaperUrl;
+}
+
 void Appearance::updateCurrentWallpaperBlurhash()
 {
     if (!LauncherController::instance().visible() || !LauncherController::instance().isFullScreenFrame()) {
@@ -101,6 +106,11 @@ void Appearance::updateCurrentWallpaperBlurhash()
         } else {
             QUrl wallpaperUrl(reply.value());
             qCDebug(logDdeIntegration) << "Got wallpaper URL from dbus:" << wallpaperUrl;
+            const QString wallpaperUrlString = wallpaperUrl.toString();
+            if (m_wallpaperUrl != wallpaperUrlString) {
+                m_wallpaperUrl = wallpaperUrlString;
+                emit wallpaperUrlChanged();
+            }
             
             if (m_wallpaperBlurMap.contains(wallpaperUrl)) {
                 QString newBlurhash = m_wallpaperBlurMap.value(wallpaperUrl);

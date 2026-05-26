@@ -31,7 +31,10 @@ FocusScope {
     property int paddingRows: Helper.frequentlyUsed.cellPaddingRows
     property real cellHeight: 82
     property real cellWidth: 80
+    property bool compactCentered: false
+    property int compactItemCount: gridView.count
     property Transition itemMove
+    property bool itemTransitionsEnabled: true
 
     readonly property alias currentItem: gridView.currentItem
     readonly property alias gridViewWidth: gridView.width
@@ -54,13 +57,31 @@ FocusScope {
         visible: true
         anchors.fill: parent
 
+        readonly property int visibleColumns: root.compactCentered && root.compactItemCount > 0
+            ? Math.min(root.columns, root.compactItemCount)
+            : root.columns
+        readonly property int visibleRows: root.compactCentered && root.compactItemCount > 0
+            ? Math.min(root.rows, Math.ceil(root.compactItemCount / Math.max(1, root.columns)))
+            : root.rows
+
         GridView {
             id: gridView
-            width: root.cellWidth * columns + paddingColumns * Math.max(0, columns - 1) + paddingColumns
-            height: root.cellHeight * rows + paddingRows * Math.max(0, rows - 1) + paddingRows
+            width: {
+                if (root.compactCentered) {
+                    return root.cellWidth * item.visibleColumns + paddingColumns * Math.max(0, item.visibleColumns - 1)
+                }
+                return root.cellWidth * columns + paddingColumns * Math.max(0, columns - 1) + paddingColumns
+            }
+            height: {
+                if (root.compactCentered) {
+                    return root.cellHeight * item.visibleRows + paddingRows * Math.max(0, item.visibleRows - 1)
+                }
+                return root.cellHeight * rows + paddingRows * Math.max(0, rows - 1) + paddingRows
+            }
             ScrollBar.vertical: root.vScrollBar
 
-            anchors.centerIn: parent
+            x: Math.round((parent.width - width) / 2)
+            y: root.compactCentered ? 0 : Math.round((parent.height - height) / 2)
             clip: true
 
             interactive: false
@@ -83,9 +104,9 @@ FocusScope {
             cellHeight: root.cellHeight + paddingRows
             cellWidth: root.cellWidth + paddingColumns
 
-            displaced: root.itemMove
-            move: root.itemMove
-            moveDisplaced: root.itemMove
+            displaced: root.itemTransitionsEnabled ? root.itemMove : null
+            move: root.itemTransitionsEnabled ? root.itemMove : null
+            moveDisplaced: root.itemTransitionsEnabled ? root.itemMove : null
 
             highlight: Item {
                 FocusBoxBorder {

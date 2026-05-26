@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import QtQuick 2.15
+import QtQuick.Window 2.15
 import QtQml.Models 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 2.15
@@ -24,6 +25,8 @@ Control {
     // So we give the max sourceSize and use scale to solve it.
     property int maxIconSize: 128
     property int maxIconSizeInFolder: 64
+    readonly property int folderPreviewGridSize: 3
+    readonly property int folderPreviewMaxIcons: folderPreviewGridSize * folderPreviewGridSize
     readonly property string text: display.startsWith("internal/category/") ? getCategoryName(display.substring(18)) : display
 
     property string iconSource
@@ -38,8 +41,12 @@ Control {
     property real labelOpacity: 1.0
     property Item glassSourceItem: null
     property real glassSampleRevision: 0
+    property bool glassLive: true
+    property bool glassEffect: true
     property bool dragImageReady: false
     property bool proxyDragPending: false
+    property string dragImageCacheKey: ""
+    property url dragImageCacheUrl: ""
 
     function folderBackgroundRect(targetItem) {
         const itemPos = iconContainer.mapToItem(targetItem, 0, 0)
@@ -65,12 +72,11 @@ Control {
     }
 
     function folderPreviewIconVisualRect(index, targetItem) {
-        const maxIconCount = 2
-        const spacing = 8
-        const itemWidth = Math.max(1, (iconContainer.width - ((maxIconCount + 1) * spacing)) / 2)
-        const itemHeight = Math.max(1, (iconContainer.height - ((maxIconCount + 1) * spacing)) / maxIconCount)
-        const column = index % maxIconCount
-        const row = Math.floor(index / maxIconCount)
+        const spacing = 5
+        const itemWidth = Math.max(1, (iconContainer.width - ((folderPreviewGridSize + 1) * spacing)) / folderPreviewGridSize)
+        const itemHeight = Math.max(1, (iconContainer.height - ((folderPreviewGridSize + 1) * spacing)) / folderPreviewGridSize)
+        const column = index % folderPreviewGridSize
+        const row = Math.floor(index / folderPreviewGridSize)
         const itemX = (column + 1) * spacing + column * itemWidth
         const itemY = (row + 1) * spacing + row * itemHeight
         const visualScale = Math.max(0.01, (itemWidth / root.maxIconSizeInFolder) * root.iconScaleFactor)
@@ -82,6 +88,36 @@ Control {
             itemY + (itemHeight - visualHeight) / 2
         )
         return Qt.rect(itemPos.x, itemPos.y, visualWidth, visualHeight)
+    }
+
+    function folderPreviewImageSource() {
+        const previewIcons = folderPreviewIcons()
+        if (previewIcons.length === 0) {
+            return ""
+        }
+
+        return "image://launcher-folder/" + previewIcons.join(":")
+    }
+
+    function folderPreviewIcons() {
+        if (!icons || icons.length === undefined) {
+            return []
+        }
+
+        const result = []
+        for (let i = 0; i < icons.length && result.length < folderPreviewMaxIcons; ++i) {
+            if (icons[i] && icons[i] !== "") {
+                result.push(icons[i])
+            }
+        }
+        return result
+    }
+
+    function currentDragImageCacheKey() {
+        const sourceKey = root.icons !== undefined ? ("folder:" + folderPreviewIcons().join(":")) : root.iconSource
+        return sourceKey + "|" + Math.round(iconLoader.width * Screen.devicePixelRatio)
+            + "x" + Math.round(iconLoader.height * Screen.devicePixelRatio)
+            + "|" + root.iconScaleFactor
     }
 
     Accessible.name: iconItemLabel.text
@@ -105,6 +141,7 @@ Control {
     }
 
     contentItem: Button {
+        id: iconButton
         hoverEnabled: root.hoverVisualEnabled && !root.iconIntroAnimRunning
         focusPolicy: Qt.NoFocus
         ColorSelector.pressed: false
@@ -140,8 +177,10 @@ Control {
                     anchors.fill: parent
                     radius: 12
 
-                    NumberAnimation on scale {
+                    NumberAnimation {
                         id: ininAni
+                        target: dragAndfolderBackground
+                        property: "scale"
                         running: false
                         from: 1.2
                         to: 1
@@ -164,6 +203,9 @@ Control {
                     radius: dragAndfolderBackground.radius
                     sourceItem: root.glassSourceItem
                     sampleRevision: root.glassSampleRevision
+                    live: root.glassLive
+                    effectEnabled: root.glassEffect
+                    textureScale: 0.5
 
                     Behavior on opacity {
                         NumberAnimation { duration: 200 * LauncherController.animationSpeedScale; easing.type: Easing.OutQuad }
@@ -212,12 +254,22 @@ Control {
 
                         onPressed: function (mouse) {
                             if (mouse.button === Qt.LeftButton && root.dndEnabled) {
-                                root.dragImageReady = false
                                 root.proxyDragPending = false
-                                root.Drag.imageSource = ""
                                 root.Drag.hotSpot = mapToItem(iconLoader, Qt.point(mouse.x, mouse.y))
+                                const cacheKey = root.currentDragImageCacheKey()
+                                if (root.dragImageReady
+                                        && root.dragImageCacheKey === cacheKey
+                                        && root.dragImageCacheUrl !== "") {
+                                    root.Drag.imageSource = root.dragImageCacheUrl
+                                    return
+                                }
+
+                                root.dragImageReady = false
+                                root.Drag.imageSource = ""
                                 iconLoader.grabToImage(function(result) {
                                     root.Drag.imageSource = result.url
+                                    root.dragImageCacheKey = cacheKey
+                                    root.dragImageCacheUrl = result.url
                                     root.dragImageReady = true
                                     if (root.proxyDragPending || mouseArea.drag.active) {
                                         mouseArea.startProxyDragWhenReady()
@@ -277,12 +329,71 @@ Control {
                     id: folderComponent
 
                     Item {
+                        anchors.fill: parent
+
+                        Loader {
+                            anchors.fill: parent
+                            sourceComponent: dndItem.mergeAnimPending ? folderAnimatedPreviewComponent : folderStaticPreviewComponent
+                        }
+                    }
+                }
+
+                Component {
+                    id: folderStaticPreviewComponent
+
+                    Item {
+                        id: staticIconItem
+                        anchors.fill: parent
+                        property real maxIconCount: root.folderPreviewGridSize
+                        property real spacing: 5
+                        property real itemWidth: (width - ((maxIconCount + 1) * spacing)) / maxIconCount
+                        property real itemHeight: (height - ((maxIconCount + 1) * spacing)) / maxIconCount
+                        readonly property var visibleIcons: root.folderPreviewIcons()
+
+                        function getItemX(index) {
+                            let col = index % maxIconCount
+                            return (col + 1) * spacing + col * itemWidth
+                        }
+
+                        function getItemY(index) {
+                            let row = Math.floor(index / maxIconCount)
+                            return (row + 1) * spacing + row * itemHeight
+                        }
+
+                        Repeater {
+                            model: staticIconItem.visibleIcons
+
+                            DciIcon {
+                                x: staticIconItem.getItemX(index)
+                                y: staticIconItem.getItemY(index)
+                                width: staticIconItem.itemWidth
+                                height: staticIconItem.itemHeight
+                                name: modelData
+                                sourceSize: Qt.size(root.maxIconSizeInFolder, root.maxIconSizeInFolder)
+                                scale: (staticIconItem.itemWidth / root.maxIconSizeInFolder) * root.iconScaleFactor
+                                palette: DTK.makeIconPalette(root.palette)
+                                theme: ApplicationHelper.DarkType
+                            }
+                        }
+                    }
+                }
+
+                Component {
+                    id: folderAnimatedPreviewComponent
+
+                    Item {
                         id: iconItem
                         anchors.fill: parent
-                        property real maxIconCount: 2
-                        property real spacing: 8
-                        property real itemWidth: (width - ((maxIconCount + 1) * spacing)) / 2
+                        property real maxIconCount: root.folderPreviewGridSize
+                        property real spacing: 5
+                        property real itemWidth: (width - ((maxIconCount + 1) * spacing)) / maxIconCount
                         property real itemHeight: (height - ((maxIconCount + 1) * spacing)) / maxIconCount
+                        readonly property var visibleIcons: root.folderPreviewIcons()
+                        readonly property int visibleIconCount: visibleIcons.length
+
+                        function previewIcons() {
+                            return visibleIcons
+                        }
 
                         function getItemX(index) {
                             let col = index % maxIconCount
@@ -297,7 +408,7 @@ Control {
                             return ItemY
                         }
                         Repeater {
-                            model: icons
+                            model: iconItem.previewIcons()
 
                             DciIcon {
                                 id: folderIcon
@@ -381,15 +492,15 @@ Control {
                         }
 
                         Repeater {
-                            model: 4 - icons.length
+                            model: Math.max(0, root.folderPreviewMaxIcons - iconItem.visibleIconCount)
 
                             Item {
                                 Layout.fillHeight: true
                                 Layout.fillWidth: true
                                 Layout.alignment: Qt.AlignTop | Qt.AlignLeft
 
-                                width: parent.width / 2
-                                height: parent.height / 2
+                                width: parent.width / root.folderPreviewGridSize
+                                height: parent.height / root.folderPreviewGridSize
                             }
                         }
                     }
@@ -462,9 +573,12 @@ Control {
         ToolTip.text: root.text
         ToolTip.delay: 500
         ToolTip.visible: hovered && iconItemLabel.truncated
-        background: ItemBackground {
-            radius: isWindowedMode ? 8 : 18
-            button: parent
+        background: Loader {
+            active: root.icons === undefined
+            sourceComponent: ItemBackground {
+                radius: isWindowedMode ? 8 : 18
+                button: iconButton
+            }
         }
     }
     background: DebugBounding { }

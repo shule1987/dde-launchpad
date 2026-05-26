@@ -145,6 +145,11 @@ QString DesktopIntegration::backgroundUrl() const
     return QString("image://blurhash/%1").arg(m_appearanceIntegration->wallpaperBlurhash());
 }
 
+QString DesktopIntegration::wallpaperUrl() const
+{
+    return m_appearanceIntegration->wallpaperUrl();
+}
+
 bool DesktopIntegration::isDockedApp(const QString &desktopId) const
 {
     // This is something we shouldn't do but anyway...
@@ -262,6 +267,7 @@ DesktopIntegration::DesktopIntegration(QObject *parent)
     connect(m_dockIntegration, &DdeDock::directionChanged, this, &DesktopIntegration::dockPositionChanged);
     connect(m_dockIntegration, &DdeDock::geometryChanged, this, &DesktopIntegration::dockGeometryChanged);
     connect(m_appearanceIntegration, &Appearance::wallpaperBlurhashChanged, this, &DesktopIntegration::backgroundUrlChanged);
+    connect(m_appearanceIntegration, &Appearance::wallpaperUrlChanged, this, &DesktopIntegration::wallpaperUrlChanged);
     connect(m_appearanceIntegration, &Appearance::opacityChanged, this, &DesktopIntegration::opacityChanged);
 }
 

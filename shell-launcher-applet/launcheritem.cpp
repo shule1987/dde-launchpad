@@ -6,6 +6,7 @@
 #include "pluginfactory.h"
 #include "../launchercontroller.h"
 #include <blurhashimageprovider.h>
+#include <launcherfoldericonprovider.h>
 
 #include <DDBusSender>
 #include <QLoggingCategory>
@@ -32,6 +33,7 @@ bool LauncherItem::init()
     DApplet::init();
 
     DQmlEngine().engine()->addImageProvider(QLatin1String("blurhash"), new BlurhashImageProvider);
+    DQmlEngine().engine()->addImageProvider(QLatin1String("launcher-folder"), new LauncherFolderIconProvider);
 
     QDBusConnection connection = QDBusConnection::sessionBus();
     if (!connection.registerService(QStringLiteral("org.deepin.dde.Launcher1")) ||

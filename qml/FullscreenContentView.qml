@@ -23,6 +23,8 @@ Item {
     required property string searchText
     required property Item glassSourceItem
     required property real glassSampleRevision
+    required property bool glassLive
+    required property bool glassEffect
     required property var launchAppFn
     required property var showContextMenuFn
     required property var getCategoryNameFn
@@ -57,7 +59,7 @@ Item {
         highlightFollowsCurrentItem: true
         highlightMoveDuration: 200 * LauncherController.animationSpeedScale
         highlightMoveVelocity: -1
-        cacheBuffer: width * 2
+        cacheBuffer: width
         activeFocusOnTab: true
         focus: true
         visible: root.searchText === ""
@@ -103,6 +105,8 @@ Item {
             iconScaleFactor: root.iconScaleFactor
             glassSourceItem: root.glassSourceItem
             glassSampleRevision: root.glassSampleRevision
+            glassLive: root.glassLive
+            glassEffect: root.glassEffect
             launchAppFn: root.launchAppFn
             showContextMenuFn: root.showContextMenuFn
             getCategoryNameFn: root.getCategoryNameFn

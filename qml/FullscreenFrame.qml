@@ -5,6 +5,8 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Window 2.15
+import QtQuick.Effects
+import QtQuick.Shapes
 import org.deepin.dtk 1.0
 
 import org.deepin.launchpad 1.0
@@ -27,7 +29,16 @@ InputEventItem {
     property bool iconGridMotionHiding: false
     property int iconGridMotionSpeedScale: 1
     property int glassSampleRevision: 0
+    property int iconContentRevision: 0
+    property string wallpaperBlurCacheKey: ""
+    property string contentBlurCacheKey: ""
+    property bool launchTransitionActive: false
     readonly property bool launcherDragActive: dndItem.currentlyDraggedId !== "" || dndItem.Drag.active
+    readonly property bool glassLiveEnabled: false
+    readonly property bool glassEffectEnabled: root.Window.window
+        && root.Window.window.visible
+        && !launchTransitionActive
+    readonly property real glassSampleTextureScale: 0.5
     readonly property real footerBlankTop: footer ? footer.y : 0
     readonly property real footerBlankHeight: footer ? footer.height : 0
     readonly property rect footerSearchRect: footer
@@ -93,18 +104,92 @@ InputEventItem {
         activateWindowForInput()
     }
 
-    function refreshGlassSnapshot() {
-        blurSceneSnapshot.scheduleUpdate()
-    }
-
     function refreshGlassSamples() {
         glassSampleRevision += 1
+        glassBackdropCapture.scheduleUpdate()
+        glassContentCapture.scheduleUpdate()
+    }
+
+    function currentWallpaperBlurKey() {
+        const source = wallpaperBackground.status === Image.Ready
+            ? wallpaperBackground.source
+            : fallbackBackground.source
+        return [
+            source,
+            root.width,
+            root.height,
+            Screen.devicePixelRatio,
+            wallpaperBlurCache.textureSize.width,
+            wallpaperBlurCache.textureSize.height
+        ].join("|")
+    }
+
+    function refreshWallpaperBlurCacheIfNeeded(force) {
+        if (!wallpaperBlurCache || width <= 0 || height <= 0) {
+            return
+        }
+
+        const key = currentWallpaperBlurKey()
+        if (!force && key === wallpaperBlurCacheKey) {
+            return
+        }
+
+        wallpaperBlurCacheKey = key
+        wallpaperBlurCache.scheduleUpdate()
+    }
+
+    function markIconContentDirty() {
+        iconContentRevision += 1
+    }
+
+    function currentContentBlurKey() {
+        return [
+            iconContentRevision,
+            contentView.pageView.currentIndex,
+            footer.searchEdit.text,
+            contentArea.width,
+            contentArea.height,
+            baseLayer.iconScaleFactor,
+            baseLayer.iconCellWidth,
+            baseLayer.iconCellHeight,
+            Screen.devicePixelRatio
+        ].join("|")
+    }
+
+    function refreshContentBlurCacheIfNeeded(force) {
+        if (!contentBlurCache || contentArea.width <= 0 || contentArea.height <= 0) {
+            return
+        }
+
+        const key = currentContentBlurKey()
+        if (!force && key === contentBlurCacheKey) {
+            return
+        }
+
+        contentBlurCacheKey = key
+        contentBlurCache.scheduleUpdate()
     }
 
     function refreshGlassSnapshotAfterSettled() {
+        if (!root.Window.window || !root.Window.window.visible) {
+            return
+        }
+        if (launchTransitionActive || folderGridViewPopup.animationRunning) {
+            glassSnapshotRequestTimer.restart()
+            return
+        }
+        if (folderGridViewPopup.visible) {
+            return
+        }
         refreshGlassSamples()
-        refreshGlassSnapshot()
         glassSnapshotSettledRefreshTimer.restart()
+    }
+
+    function requestGlassSnapshotAfterSettled() {
+        if (!root.Window.window || !root.Window.window.visible) {
+            return
+        }
+        glassSnapshotRequestTimer.restart()
     }
 
     MouseArea {
@@ -130,8 +215,17 @@ InputEventItem {
         }
     }
 
+    Timer {
+        id: glassSnapshotRequestTimer
+        interval: 220 * LauncherController.animationSpeedScale
+        repeat: false
+        onTriggered: root.refreshGlassSnapshotAfterSettled()
+    }
+
     Component.onCompleted: {
         inputActivationTimer.restart()
+        root.refreshWallpaperBlurCacheIfNeeded(true)
+        root.refreshContentBlurCacheIfNeeded(true)
     }
 
     property Palette appTextColor: Palette {
@@ -238,17 +332,87 @@ InputEventItem {
                 anchors.fill: parent
 
                 Image {
-                    id: fullscreenBackground
+                    id: fallbackBackground
                     anchors.fill: parent
-                    source: DesktopIntegration.isTreeLand() ? undefined : DesktopIntegration.backgroundUrl
+                    source: DesktopIntegration.backgroundUrl
                     sourceSize: Qt.size(
-                        Math.max(1, Math.ceil(width * Screen.devicePixelRatio)),
-                        Math.max(1, Math.ceil(height * Screen.devicePixelRatio))
+                        Math.max(1, Math.min(3200, Math.ceil(width * Screen.devicePixelRatio))),
+                        Math.max(1, Math.min(2000, Math.ceil(height * Screen.devicePixelRatio)))
                     )
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    cache: false
+                    visible: wallpaperBackground.status !== Image.Ready
+                    onStatusChanged: {
+                        if (status === Image.Ready || status === Image.Error) {
+                            root.refreshWallpaperBlurCacheIfNeeded(false)
+                        }
+                    }
+                }
+
+                Image {
+                    id: wallpaperBackground
+                    anchors.fill: parent
+                    source: DesktopIntegration.wallpaperUrl
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    cache: false
+                    smooth: true
+                    sourceSize: Qt.size(
+                        Math.max(1, Math.min(3200, Math.ceil(width * Screen.devicePixelRatio))),
+                        Math.max(1, Math.min(2000, Math.ceil(height * Screen.devicePixelRatio)))
+                    )
+                    visible: status === Image.Ready
+                    onStatusChanged: {
+                        if (status === Image.Ready || status === Image.Error) {
+                            root.refreshWallpaperBlurCacheIfNeeded(false)
+                        }
+                    }
+                    onSourceChanged: root.refreshWallpaperBlurCacheIfNeeded(false)
+                }
+
+                Item {
+                    id: wallpaperBlurSource
+                    anchors.fill: parent
+
+                    MultiEffect {
+                        anchors.fill: parent
+                        source: wallpaperBackground.status === Image.Ready ? wallpaperBackground : fallbackBackground
+                        blurEnabled: true
+                        blurMax: 80
+                        blurMultiplier: 0.36
+                        blur: 1.0
+                        saturation: 1.05
+                        autoPaddingEnabled: false
+                    }
+                }
+
+                ShaderEffectSource {
+                    id: wallpaperBlurCache
+                    anchors.fill: parent
+                    live: false
+                    hideSource: true
+                    recursive: false
+                    smooth: true
+                    mipmap: false
+                    sourceItem: wallpaperBlurSource
+                    textureSize: Qt.size(
+                        Math.max(64, Math.min(3200, Math.ceil(width * Screen.devicePixelRatio))),
+                        Math.max(64, Math.min(2000, Math.ceil(height * Screen.devicePixelRatio)))
+                    )
+                    onTextureSizeChanged: root.refreshWallpaperBlurCacheIfNeeded(false)
                 }
 
                 Rectangle {
-                    anchors.fill: fullscreenBackground
+                    anchors.fill: parent
+                    color: Qt.rgba(0, 0, 0, 0.34)
+                }
+
+                Rectangle {
+                    x: baseLayer.leftPadding
+                    y: baseLayer.topPadding
+                    width: Math.max(0, parent.width - baseLayer.leftPadding - baseLayer.rightPadding)
+                    height: Math.max(0, parent.height - baseLayer.topPadding - baseLayer.bottomPadding)
                     readonly property real folderBackdropOpacity: 0.2 * folderGridViewPopup.externalDimProgress
                     color: Qt.rgba(0, 0, 0, folderBackdropOpacity)
                 }
@@ -431,6 +595,7 @@ InputEventItem {
                                     dropArea.createdEmptyPage = false
                                 }
                                 ItemArrangementProxyModel.persistArrangement()
+                                root.requestGlassSnapshotAfterSettled()
                             }
                         }
                     }
@@ -551,8 +716,10 @@ InputEventItem {
                                     bandHeight: baseLayer.topBandHeight
                                     searchActive: footer.searchEdit.text !== ""
                                     pageView: contentView.pageView
-                                    glassSourceItem: launchAnimationBackdrop
+                                    glassSourceItem: glassControlsSampleSource
                                     glassSampleRevision: root.glassSampleRevision
+                                    glassLive: root.glassLiveEnabled
+                                    glassEffect: root.glassEffectEnabled
                                     onExitRequested: {
                                         footer.searchEdit.text = ""
                                         LauncherController.setCurrentFrameToWindowedFrame()
@@ -566,6 +733,7 @@ InputEventItem {
                                     anchors.top: header.bottom
                                     anchors.bottom: footer.top
                                     clip: true
+                                    opacity: contentBlurOverlay.visible ? 0 : 1
 
                                     FullscreenContentView {
                                         id: contentView
@@ -580,13 +748,102 @@ InputEventItem {
                                         cellWidth: baseLayer.iconCellWidth
                                         cellHeight: baseLayer.iconCellHeight
                                         iconScaleFactor: baseLayer.iconScaleFactor
-                                        externalDimProgress: folderGridViewPopup.externalDimProgress
+                                        externalDimProgress: 0
                                         searchText: footer.searchEdit.text
                                         glassSourceItem: launchAnimationBackdrop
                                         glassSampleRevision: root.glassSampleRevision
+                                        glassLive: root.glassLiveEnabled
+                                        glassEffect: root.glassEffectEnabled
                                         launchAppFn: function(desktopId) { launchApp(desktopId) }
                                         showContextMenuFn: function(item, model) { showContextMenu(item, model) }
                                         getCategoryNameFn: function(section) { return getCategoryName(section) }
+                                    }
+                                }
+
+                                ShaderEffectSource {
+                                    id: contentBlurCache
+                                    x: contentArea.x
+                                    y: contentArea.y
+                                    width: contentArea.width
+                                    height: contentArea.height
+                                    visible: false
+                                    live: false
+                                    hideSource: false
+                                    recursive: false
+                                    smooth: true
+                                    mipmap: false
+                                    sourceItem: contentArea
+                                    sourceRect: Qt.rect(0, 0, contentArea.width, contentArea.height)
+                                    textureSize: Qt.size(
+                                        Math.max(64, Math.ceil(width * Screen.devicePixelRatio)),
+                                        Math.max(64, Math.ceil(height * Screen.devicePixelRatio))
+                                    )
+                                }
+
+                                MultiEffect {
+                                    id: contentBlurOverlay
+                                    x: contentArea.x
+                                    y: contentArea.y
+                                    width: contentArea.width
+                                    height: contentArea.height
+                                    source: contentBlurCache
+                                    visible: folderGridViewPopup.visible || folderGridViewPopup.externalDimProgress > 0
+                                    opacity: 1 - (0.4 * folderGridViewPopup.externalDimProgress)
+                                    autoPaddingEnabled: false
+                                    blurEnabled: true
+                                    blurMax: 64
+                                    blurMultiplier: 0.22
+                                    blur: folderGridViewPopup.externalDimProgress
+                                    saturation: 1.4
+                                }
+
+                                Item {
+                                    id: glassControlsSampleSource
+                                    anchors.fill: parent
+                                    z: -100
+                                    enabled: false
+
+                                    ShaderEffectSource {
+                                        id: glassBackdropCapture
+                                        readonly property point backdropOrigin: glassControlsSampleSource.mapToItem(launchAnimationBackdrop, 0, 0)
+
+                                        anchors.fill: parent
+                                        live: root.glassLiveEnabled
+                                        hideSource: false
+                                        recursive: false
+                                        smooth: true
+                                        mipmap: false
+                                        sourceItem: launchAnimationBackdrop
+                                        sourceRect: Qt.rect(
+                                            backdropOrigin.x,
+                                            backdropOrigin.y,
+                                            glassControlsSampleSource.width,
+                                            glassControlsSampleSource.height
+                                        )
+                                        textureSize: Qt.size(
+                                            Math.max(64, Math.ceil(width * Screen.devicePixelRatio * root.glassSampleTextureScale)),
+                                            Math.max(64, Math.ceil(height * Screen.devicePixelRatio * root.glassSampleTextureScale))
+                                        )
+                                    }
+
+                                    ShaderEffectSource {
+                                        id: glassContentCapture
+                                        x: contentArea.x
+                                        y: contentArea.y
+                                        width: contentArea.width
+                                        height: contentArea.height
+                                        visible: false
+                                        live: root.glassLiveEnabled
+                                        hideSource: false
+                                        recursive: false
+                                        smooth: true
+                                        mipmap: false
+                                        sourceItem: contentArea
+                                        sourceRect: Qt.rect(0, 0, contentArea.width, contentArea.height)
+                                        textureSize: Qt.size(
+                                            Math.max(64, Math.ceil(width * Screen.devicePixelRatio * root.glassSampleTextureScale)),
+                                            Math.max(64, Math.ceil(height * Screen.devicePixelRatio * root.glassSampleTextureScale))
+                                        )
                                     }
                                 }
 
@@ -602,15 +859,17 @@ InputEventItem {
                                     pageView: contentView.pageView
                                     searchGrid: contentView.searchGrid
                                     searchResultCount: contentView.searchResultCount
-                                    glassSourceItem: launchAnimationBackdrop
+                                    glassSourceItem: glassControlsSampleSource
                                     glassSampleRevision: root.glassSampleRevision
+                                    glassLive: root.glassLiveEnabled
+                                    glassEffect: root.glassEffectEnabled
                                 }
 
                                 ToolButton {
                                     id: previousPageButton
                                     anchors.left: parent.left
                                     anchors.leftMargin: 30
-                                    anchors.verticalCenter: parent.verticalCenter
+                                    y: Math.round((root.height - height) / 2)
                                     z: 10
                                     width: 50
                                     height: 50
@@ -649,8 +908,11 @@ InputEventItem {
                                     }
                                     background: FrostedGlassBackground {
                                         radius: 25
-                                        sourceItem: launchAnimationBackdrop
+                                        sourceItem: glassControlsSampleSource
                                         sampleRevision: root.glassSampleRevision
+                                        live: root.glassLiveEnabled
+                                        effectEnabled: root.glassEffectEnabled
+                                        textureScale: root.glassSampleTextureScale
                                         brightness: previousPageButton.down ? -0.1 : previousPageButton.hovered ? 0.2 : 0.0
                                         tintColor: Qt.rgba(1, 1, 1, previousPageButton.down ? 0.16 : previousPageButton.hovered ? 0.12 : 0.08)
                                         borderColor: Qt.rgba(1, 1, 1, 0.12)
@@ -665,7 +927,7 @@ InputEventItem {
                                     id: nextPageButton
                                     anchors.right: parent.right
                                     anchors.rightMargin: 30
-                                    anchors.verticalCenter: parent.verticalCenter
+                                    y: Math.round((root.height - height) / 2)
                                     z: 10
                                     width: 50
                                     height: 50
@@ -704,8 +966,11 @@ InputEventItem {
                                     }
                                     background: FrostedGlassBackground {
                                         radius: 25
-                                        sourceItem: launchAnimationBackdrop
+                                        sourceItem: glassControlsSampleSource
                                         sampleRevision: root.glassSampleRevision
+                                        live: root.glassLiveEnabled
+                                        effectEnabled: root.glassEffectEnabled
+                                        textureScale: root.glassSampleTextureScale
                                         brightness: nextPageButton.down ? -0.1 : nextPageButton.hovered ? 0.2 : 0.0
                                         tintColor: Qt.rgba(1, 1, 1, nextPageButton.down ? 0.16 : nextPageButton.hovered ? 0.12 : 0.08)
                                         borderColor: Qt.rgba(1, 1, 1, 0.12)
@@ -779,10 +1044,14 @@ InputEventItem {
             id: folderGridViewPopup
             anchors.fill: parent
             cs: baseLayer.iconCellHeight
-            backgroundSourceItem: blurSceneSnapshot
-            refreshBackgroundSourceFn: function() { root.refreshGlassSnapshot() }
-            backgroundSourceOriginX: 0
-            backgroundSourceOriginY: 0
+            folderCellWidth: baseLayer.iconCellWidth
+            folderCellHeight: baseLayer.iconCellHeight
+            backgroundSourceItem: wallpaperBackground.status === Image.Ready ? wallpaperBackground : null
+            refreshBackgroundSourceFn: function() {
+                root.refreshGlassSamples()
+            }
+            backgroundSourceOriginX: wallpaperBackground.status === Image.Ready ? wallpaperBackground.mapToItem(folderGridViewPopup, 0, 0).x : 0
+            backgroundSourceOriginY: wallpaperBackground.status === Image.Ready ? wallpaperBackground.mapToItem(folderGridViewPopup, 0, 0).y : 0
             dndItem: dndItem
             focusTarget: baseLayer
             launchAppFn: function(desktopId) { launchApp(desktopId) }
@@ -796,25 +1065,93 @@ InputEventItem {
             }
             decrementPageIndexFn: function(pages) { decrementPageIndex(pages) }
             incrementPageIndexFn: function(pages) { incrementPageIndex(pages) }
+            prepareContentBlurSourceFn: function() {
+                root.refreshContentBlurCacheIfNeeded(false)
+            }
             folderNameFont: LauncherController.adjustFontWeight(DTK.fontManager.t6, Font.Bold)
             endPoint: Qt.point(width / 2, height / 2)
         }
 
-        ShaderEffectSource {
-            id: blurSceneSnapshot
-            anchors.fill: blurSceneSource
-            z: -1
-            visible: false
-            live: false
-            hideSource: false
-            recursive: false
-            smooth: true
-            mipmap: true
-            sourceItem: blurSceneSource
-            textureSize: Qt.size(
-                Math.max(64, Math.ceil(width * Screen.devicePixelRatio)),
-                Math.max(64, Math.ceil(height * Screen.devicePixelRatio))
-            )
+        Item {
+            id: folderOutsideDimOverlay
+            anchors.fill: parent
+            z: 90
+            enabled: false
+            visible: opacity > 0
+            opacity: 0.2 * folderGridViewPopup.externalDimProgress
+
+            readonly property real panelLeft: Math.max(0, Math.min(width, folderGridViewPopup.panelX))
+            readonly property real panelTop: Math.max(0, Math.min(height, folderGridViewPopup.panelY))
+            readonly property real panelRight: Math.max(panelLeft, Math.min(width, folderGridViewPopup.panelX + folderGridViewPopup.panelCurrentWidth))
+            readonly property real panelBottom: Math.max(panelTop, Math.min(height, folderGridViewPopup.panelY + folderGridViewPopup.panelCurrentHeight))
+            readonly property real panelRadius: Math.max(0, Math.min(
+                folderGridViewPopup.panelRadius,
+                (panelRight - panelLeft) / 2,
+                (panelBottom - panelTop) / 2
+            ))
+
+            Shape {
+                anchors.fill: parent
+                preferredRendererType: Shape.CurveRenderer
+
+                ShapePath {
+                    fillColor: "black"
+                    strokeColor: "transparent"
+                    strokeWidth: 0
+                    fillRule: ShapePath.OddEvenFill
+
+                    PathMove { x: 0; y: 0 }
+                    PathLine { x: folderOutsideDimOverlay.width; y: 0 }
+                    PathLine { x: folderOutsideDimOverlay.width; y: folderOutsideDimOverlay.height }
+                    PathLine { x: 0; y: folderOutsideDimOverlay.height }
+                    PathLine { x: 0; y: 0 }
+
+                    PathMove {
+                        x: folderOutsideDimOverlay.panelLeft + folderOutsideDimOverlay.panelRadius
+                        y: folderOutsideDimOverlay.panelTop
+                    }
+                    PathLine {
+                        x: folderOutsideDimOverlay.panelRight - folderOutsideDimOverlay.panelRadius
+                        y: folderOutsideDimOverlay.panelTop
+                    }
+                    PathQuad {
+                        x: folderOutsideDimOverlay.panelRight
+                        y: folderOutsideDimOverlay.panelTop + folderOutsideDimOverlay.panelRadius
+                        controlX: folderOutsideDimOverlay.panelRight
+                        controlY: folderOutsideDimOverlay.panelTop
+                    }
+                    PathLine {
+                        x: folderOutsideDimOverlay.panelRight
+                        y: folderOutsideDimOverlay.panelBottom - folderOutsideDimOverlay.panelRadius
+                    }
+                    PathQuad {
+                        x: folderOutsideDimOverlay.panelRight - folderOutsideDimOverlay.panelRadius
+                        y: folderOutsideDimOverlay.panelBottom
+                        controlX: folderOutsideDimOverlay.panelRight
+                        controlY: folderOutsideDimOverlay.panelBottom
+                    }
+                    PathLine {
+                        x: folderOutsideDimOverlay.panelLeft + folderOutsideDimOverlay.panelRadius
+                        y: folderOutsideDimOverlay.panelBottom
+                    }
+                    PathQuad {
+                        x: folderOutsideDimOverlay.panelLeft
+                        y: folderOutsideDimOverlay.panelBottom - folderOutsideDimOverlay.panelRadius
+                        controlX: folderOutsideDimOverlay.panelLeft
+                        controlY: folderOutsideDimOverlay.panelBottom
+                    }
+                    PathLine {
+                        x: folderOutsideDimOverlay.panelLeft
+                        y: folderOutsideDimOverlay.panelTop + folderOutsideDimOverlay.panelRadius
+                    }
+                    PathQuad {
+                        x: folderOutsideDimOverlay.panelLeft + folderOutsideDimOverlay.panelRadius
+                        y: folderOutsideDimOverlay.panelTop
+                        controlX: folderOutsideDimOverlay.panelLeft
+                        controlY: folderOutsideDimOverlay.panelTop
+                    }
+                }
+            }
         }
 
         Timer {
@@ -822,8 +1159,10 @@ InputEventItem {
             interval: 240 * LauncherController.animationSpeedScale
             repeat: false
             onTriggered: {
+                if (folderGridViewPopup.visible) {
+                    return
+                }
                 root.refreshGlassSamples()
-                root.refreshGlassSnapshot()
             }
         }
     }
@@ -859,7 +1198,7 @@ InputEventItem {
         function onVisibleChanged() {
             if (root.Window.window && root.Window.window.visible) {
                 inputActivationTimer.restart()
-                Qt.callLater(root.refreshGlassSnapshotAfterSettled)
+                root.requestGlassSnapshotAfterSettled()
                 return
             }
 
@@ -881,7 +1220,53 @@ InputEventItem {
         target: contentView.pageView
 
         function onCurrentIndexChanged() {
-            Qt.callLater(root.refreshGlassSnapshotAfterSettled)
+            root.requestGlassSnapshotAfterSettled()
+        }
+    }
+
+    Connections {
+        target: ItemArrangementProxyModel
+
+        function onRowsInserted() {
+            root.markIconContentDirty()
+        }
+
+        function onRowsRemoved() {
+            root.markIconContentDirty()
+        }
+
+        function onRowsMoved() {
+            root.markIconContentDirty()
+        }
+
+        function onDataChanged() {
+            root.markIconContentDirty()
+        }
+
+        function onLayoutChanged() {
+            root.markIconContentDirty()
+        }
+
+        function onModelReset() {
+            root.markIconContentDirty()
+        }
+    }
+
+    Connections {
+        target: footer.searchEdit
+
+        function onTextChanged() {
+            root.requestGlassSnapshotAfterSettled()
+        }
+    }
+
+    Connections {
+        target: folderGridViewPopup
+
+        function onAnimationRunningChanged() {
+            if (!folderGridViewPopup.animationRunning) {
+                root.requestGlassSnapshotAfterSettled()
+            }
         }
     }
 

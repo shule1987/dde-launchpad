@@ -17,9 +17,25 @@ Item {
     property real blurMultiplier: 0.22
     property real brightness: 0.0
     property real saturation: 1.0
+    property bool effectEnabled: true
     property bool live: true
+    property bool mipmap: false
+    property real textureScale: 1.0
     property real devicePixelRatio: Screen.devicePixelRatio
     property real sampleRevision: 0
+    readonly property real captureDevicePixelRatio: Math.max(0.25, devicePixelRatio * textureScale)
+
+    onSampleRevisionChanged: {
+        if (!live && sourceItem) {
+            backdropCapture.scheduleUpdate()
+        }
+    }
+
+    onSourceItemChanged: {
+        if (sourceItem) {
+            Qt.callLater(backdropCapture.scheduleUpdate)
+        }
+    }
 
     Behavior on brightness {
         NumberAnimation {
@@ -30,7 +46,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        visible: root.sourceItem === null
+        visible: root.sourceItem === null || !root.effectEnabled
         radius: root.radius
         color: root.fallbackColor
         antialiasing: true
@@ -39,7 +55,7 @@ Item {
     Item {
         id: blurLayer
         anchors.fill: parent
-        visible: root.sourceItem !== null
+        visible: root.sourceItem !== null && root.effectEnabled
         clip: true
 
         readonly property point sourceOrigin: root.sourceItem
@@ -93,7 +109,7 @@ Item {
             hideSource: false
             recursive: false
             smooth: true
-            mipmap: true
+            mipmap: root.mipmap
             sourceItem: root.sourceItem
             sourceRect: Qt.rect(
                 blurLayer.captureLeft,
@@ -102,8 +118,8 @@ Item {
                 blurLayer.captureHeight
             )
             textureSize: Qt.size(
-                Math.max(16, Math.ceil(root.width * root.devicePixelRatio)),
-                Math.max(16, Math.ceil(root.height * root.devicePixelRatio))
+                Math.max(16, Math.ceil(root.width * root.captureDevicePixelRatio)),
+                Math.max(16, Math.ceil(root.height * root.captureDevicePixelRatio))
             )
         }
 

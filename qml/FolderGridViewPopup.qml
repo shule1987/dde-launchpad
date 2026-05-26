@@ -24,6 +24,7 @@ Popup {
     property var currentDragItem: null
     property Item backgroundSourceItem: null
     property real contentRevealProgress: 0
+    property bool folderItemMoveEnabled: false
 
 
 
@@ -53,13 +54,15 @@ Popup {
     popupType: isWindowedMode ? Popup.Window : Popup.Item
 
     property int cs: 110 // * 5 / 4
+    property real folderCellWidth: cs
+    property real folderCellHeight: cs
     // anchors.centerIn: parent // seems dtkdeclarative's Popup doesn't have anchors.centerIn
 
-    width: cs * 4 + 20 /* padding */
+    width: folderCellWidth * 4 + 20 /* padding */
 
     // TODO: 经验证发现：Poppu窗口高度为奇数时，会多显示一个像素的外边框；为偶数时不会显示
     // 因此，这里需要保证高度是偶数来确保Popup窗口没有外边框
-    height: ((cs * 3) % 2 === 0 ? (cs * 3) : (cs * 3 + 1)) + 130 /* title height*/
+    height: ((folderCellHeight * 3) % 2 === 0 ? (folderCellHeight * 3) : (folderCellHeight * 3 + 1)) + 130 /* title height*/
     // 获取当前屏幕的 DPR，用于物理像素对齐
     property real dpr: Screen.devicePixelRatio
 
@@ -75,6 +78,22 @@ Popup {
         folderLoader.currentFolderId = -1
         currentDragItem = null
         contentRevealProgress = 0
+        folderItemMoveEnableTimer.stop()
+        folderItemMoveEnabled = false
+    }
+
+    onAboutToShow: {
+        folderItemMoveEnableTimer.stop()
+        folderItemMoveEnabled = false
+    }
+
+    onOpened: folderItemMoveEnableTimer.restart()
+
+    Timer {
+        id: folderItemMoveEnableTimer
+        interval: root.animationDuration(80)
+        repeat: false
+        onTriggered: root.folderItemMoveEnabled = root.visible
     }
 
     Loader {
@@ -416,11 +435,18 @@ Popup {
                                             rows: 3
                                             columns: 4
                                             model: sortProxyModel
+                                            cellWidth: root.folderCellWidth
+                                            cellHeight: root.folderCellHeight
+                                            compactCentered: true
+                                            compactItemCount: sortProxyModel.count !== undefined
+                                                ? sortProxyModel.count
+                                                : (sortProxyModel.rowCount ? sortProxyModel.rowCount() : 0)
                                             padding: 10
                                             interactive: false
                                             focus: true
                                             gridViewClip: false // TODO it maybe a bug for dtk, https://github.com/linuxdeepin/developer-center/issues/8468
                                             activeGridViewFocusOnTab: folderGridViewLoader.SwipeView.isCurrentItem
+                                            itemTransitionsEnabled: root.folderItemMoveEnabled && root.contentRevealProgress >= 1
                                             itemMove: parent.itemMove
                                             onActiveFocusChanged: {
                                                 if (activeFocus) {
@@ -494,10 +520,15 @@ Popup {
                                         id: listViewGridViewContainer
                                         Windowed.GridViewContainer {
                                             id: folderGridViewContainer
+                                            objectName: "folderGridViewContainer"
                                             anchors.fill: parent
                                             rows: 3
                                             columns: 4
                                             model: sortProxyModel
+                                            compactCentered: true
+                                            compactItemCount: sortProxyModel.count !== undefined
+                                                ? sortProxyModel.count
+                                                : (sortProxyModel.rowCount ? sortProxyModel.rowCount() : 0)
                                             paddingRows: 6
                                             cellHeight: 86
                                             paddingColumns: 2
@@ -505,6 +536,8 @@ Popup {
                                             focus: true
                                             gridViewClip: false
                                             activeGridViewFocusOnTab: folderGridViewLoader.SwipeView.isCurrentItem
+                                            itemTransitionsEnabled: root.folderItemMoveEnabled
+                                                && (root.isWindowedMode || root.contentRevealProgress >= 1)
                                             itemMove: parent.itemMove
 
                                             onActiveFocusChanged: {
