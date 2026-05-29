@@ -27,6 +27,7 @@ FILES
     freesortproxymodel.h
     frequentlyusedproxymodel.h
     itemspagemodel.h
+    pagesliceproxymodel.h
 )
 
 target_sources(launcher-models
@@ -45,6 +46,7 @@ PRIVATE
     freesortproxymodel.cpp
     frequentlyusedproxymodel.cpp
     itemspagemodel.cpp
+    pagesliceproxymodel.cpp
 )
 
 target_link_libraries(launcher-models PRIVATE

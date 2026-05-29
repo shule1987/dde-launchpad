@@ -26,6 +26,8 @@ Control {
         ToolButton {
             id: shutdownBtn
             icon.name: "shutdown"
+            icon.width: 16
+            icon.height: 16
             background: ItemBackground {
                button: shutdownBtn
             }
@@ -62,7 +64,6 @@ Control {
                     console.log(text)
                     searchEdit.focus = true
                     SearchFilterProxyModel.setFilterRegularExpression(text.trim())
-                    SearchFilterProxyModel.invalidate()
                 }
 
                 property Palette edittingPalette: Palette {
@@ -96,6 +97,8 @@ Control {
         ToolButton {
             id: fullscreenBtn
             icon.name: "launcher_fullscreen"
+            icon.width: 16
+            icon.height: 16
             background: ItemBackground {
                 button: fullscreenBtn
             }

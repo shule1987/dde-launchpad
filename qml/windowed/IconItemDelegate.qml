@@ -109,12 +109,12 @@ Control {
 
             Label {
                 property bool singleRow: font.pixelSize > Helper.windowed.doubleRowMaxFontSize
+                readonly property int horizontalInset: 8
                 id: iconItemLabel
                 text: root.text
                 textFormat: Text.PlainText
-                width: parent.width
-                leftPadding: 2
-                rightPadding: 2
+                width: Math.max(0, parent.width - horizontalInset * 2)
+                anchors.horizontalCenter: parent.horizontalCenter
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignTop
                 wrapMode: singleRow ? Text.NoWrap : Text.Wrap

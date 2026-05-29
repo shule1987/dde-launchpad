@@ -3,14 +3,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <QTest>
-#include <QSignalSpy>
 #include <QStandardItemModel>
 #include <QSortFilterProxyModel>
 #include <QRegularExpression>
+#include <QCoreApplication>
 #include <QDebug>
 #include <QLoggingCategory>
 
 #include "../src/models/searchfilterproxymodel.h"
+#include "../src/models/pagesliceproxymodel.h"
 #include "../src/models/appsmodel.h"
 #include "../src/models/appitem.h"
 
@@ -32,6 +33,7 @@ private slots:
     void testJianpinSearch();
     void testSorting();
     void testSpecialCharacters();
+    void testResultCountAndPageSliceBeyondFirstPage();
 
 private:
     void setupTestData();
@@ -333,5 +335,47 @@ void TestSearchFilterProxyModel::testSpecialCharacters()
     qCInfo(logTest) << "Special characters search tests completed successfully";
 }
 
+void TestSearchFilterProxyModel::testResultCountAndPageSliceBeyondFirstPage()
+{
+    qCInfo(logTest) << "Starting search pagination regression test";
+
+    constexpr int bulkCount = 36;
+    QList<AppItem *> bulkItems;
+    bulkItems.reserve(bulkCount);
+    for (int i = 0; i < bulkCount; ++i) {
+        const QString suffix = QString::number(i).rightJustified(2, '0');
+        bulkItems.append(createTestAppItem(QString("org.bulk.search.%1").arg(suffix),
+                                           QString("Bulk Search App %1").arg(suffix),
+                                           QString("Bulk Search App %1").arg(suffix),
+                                           QString(),
+                                           QString("bulk"),
+                                           i));
+    }
+    AppsModel::instance().appendRows(bulkItems);
+    QCoreApplication::processEvents();
+
+    SearchFilterProxyModel &model = SearchFilterProxyModel::instance();
+    model.setFilterRegularExpression(QRegularExpression("BulkSearchApp"));
+    QCoreApplication::processEvents();
+
+    QCOMPARE(model.rowCount(), bulkCount);
+    QCOMPARE(model.property("count").toInt(), bulkCount);
+    QVERIFY(model.property("count").toInt() > 28);
+
+    PageSliceProxyModel firstPage;
+    firstPage.setSourceModel(&model);
+    firstPage.setPageSize(28);
+    firstPage.setPageIndex(0);
+    QCOMPARE(firstPage.count(), 28);
+
+    PageSliceProxyModel secondPage;
+    secondPage.setSourceModel(&model);
+    secondPage.setPageSize(28);
+    secondPage.setPageIndex(1);
+    QCOMPARE(secondPage.count(), bulkCount - 28);
+
+    qCInfo(logTest) << "Search pagination regression test completed successfully";
+}
+
 QTEST_MAIN(TestSearchFilterProxyModel)
-#include "searchfilterproxymodeltest.moc" 
+#include "searchfilterproxymodeltest.moc"

@@ -189,7 +189,7 @@ Item {
 
     function uninstallSelectedApp() {
         if (DesktopIntegration.shouldSkipConfirmUninstallDialog(root.desktopId)) {
-            DesktopIntegration.uninstallApp(root.desktopId)
+            DesktopIntegration.uninstallApp(root.desktopId, root.display, root.iconName)
             return
         }
 

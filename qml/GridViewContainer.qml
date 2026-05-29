@@ -101,10 +101,10 @@ FocusScope {
             }
             color: "transparent"
 
-            GridView {
-                id: gridView
+                GridView {
+                    id: gridView
 
-                ScrollBar.vertical: root.vScrollBar
+                    ScrollBar.vertical: root.vScrollBar
 
                 anchors.fill: parent
                 clip: true
@@ -124,15 +124,11 @@ FocusScope {
                         gridView.preferredHighlightBegin = preferredHighlightBegin
                     }
                 }
-                cellHeight: item.gridCellHeight
-                cellWidth: item.gridCellWidth
-                TapHandler {
-                    onTapped:
-                        LauncherController.visible = false
-                }
+                    cellHeight: item.gridCellHeight
+                    cellWidth: item.gridCellWidth
 
-                highlight: Item {
-                    FocusBoxBorder {
+                    highlight: Item {
+                        FocusBoxBorder {
                         anchors {
                             fill: parent
                             margins: 5

@@ -33,6 +33,8 @@ InputEventItem {
     property string wallpaperBlurCacheKey: ""
     property string contentBlurCacheKey: ""
     property bool launchTransitionActive: false
+    property var pendingGridPressItem: null
+    property var pendingGridPressPageItem: null
     readonly property bool launcherDragActive: dndItem.currentlyDraggedId !== "" || dndItem.Drag.active
     readonly property bool glassLiveEnabled: false
     readonly property bool glassEffectEnabled: root.Window.window
@@ -66,6 +68,56 @@ InputEventItem {
         return Qt.rect(topLeft.x, topLeft.y, footer.searchEdit.width, footer.searchEdit.height)
     }
 
+    function clearPendingGridPress() {
+        pendingGridPressItem = null
+        pendingGridPressPageItem = null
+    }
+
+    function rememberGridPressAt(position) {
+        clearPendingGridPress()
+        if (!contentView || !contentView.pageView || !contentView.pageView.currentItem) {
+            return
+        }
+
+        const p = fullscreenCanvas.mapFromItem(root, position.x, position.y)
+        const pageItem = contentView.pageView.currentItem
+        const pagePoint = pageItem.mapFromItem(fullscreenCanvas, p.x, p.y)
+        if (typeof pageItem.gridItemAt !== "function") {
+            return
+        }
+
+        const gridItem = pageItem.gridItemAt(pagePoint.x, pagePoint.y)
+        if (gridItem) {
+            pendingGridPressItem = gridItem
+            pendingGridPressPageItem = pageItem
+            LauncherController.suppressNextHideForInputFocus()
+        }
+    }
+
+    function activatePendingGridFolderAt(position) {
+        const pressedItem = pendingGridPressItem
+        const pageItem = pendingGridPressPageItem
+        clearPendingGridPress()
+
+        if (!pressedItem || !pageItem || folderGridViewPopup.visible || root.launcherDragActive) {
+            return
+        }
+        if (typeof pageItem.gridItemAt !== "function"
+                || typeof pressedItem.activateFolderItem !== "function") {
+            return
+        }
+
+        const p = fullscreenCanvas.mapFromItem(root, position.x, position.y)
+        const pagePoint = pageItem.mapFromItem(fullscreenCanvas, p.x, p.y)
+        if (pageItem.gridItemAt(pagePoint.x, pagePoint.y) !== pressedItem) {
+            return
+        }
+
+        if (pressedItem.activateFolderItem()) {
+            LauncherController.suppressNextHideForInputFocus()
+        }
+    }
+
     function hideLauncherFromBlankPress(position) {
         if (DebugHelper.avoidHideWindow || folderGridViewPopup.visible) {
             return
@@ -81,21 +133,39 @@ InputEventItem {
 
         const p = fullscreenCanvas.mapFromItem(root, position.x, position.y)
         const searchRect = searchEditRectInCanvas()
-        const exitRect = Qt.rect(fullscreenCanvas.width - 30 - 40, 30, 40, 40)
+
+        if (p.y >= header.y && p.y <= header.y + header.height) {
+            const headerPoint = header.mapFromItem(fullscreenCanvas, p.x, p.y)
+            if (header.switchPageIndicatorAt(headerPoint.x, headerPoint.y)) {
+                LauncherController.suppressNextHideForInputFocus()
+                return
+            }
+            if (!header.pointInInteractiveArea(headerPoint.x, headerPoint.y)) {
+                LauncherController.visible = false
+            }
+            return
+        }
 
         if (p.y >= footer.y && p.y <= footer.y + footer.height && !pointInRect(p, searchRect)) {
             LauncherController.visible = false
             return
         }
 
-        if (p.y >= header.y && p.y <= header.y + header.height && !pointInRect(p, exitRect)) {
-            LauncherController.visible = false
-        }
+        rememberGridPressAt(position)
+
     }
 
     onPointerPressed: function(position, button, modifiers) {
         if (button === Qt.LeftButton) {
             hideLauncherFromBlankPress(position)
+        }
+    }
+
+    onPointerReleased: function(position, button, modifiers) {
+        if (button === Qt.LeftButton) {
+            activatePendingGridFolderAt(position)
+        } else {
+            clearPendingGridPress()
         }
     }
 
@@ -624,6 +694,9 @@ InputEventItem {
                                     enabled: !folderGridViewPopup.visible
 
                                     onClicked: function(mouse) {
+                                        if (mouse.y >= header.y && mouse.y <= header.y + header.height) {
+                                            return
+                                        }
                                         if (root.pointInRect(Qt.point(mouse.x, mouse.y), root.searchEditRectInCanvas())) {
                                             return
                                         }
@@ -678,10 +751,6 @@ InputEventItem {
                                     acceptedButtons: Qt.LeftButton
                                     enabled: !folderGridViewPopup.visible
 
-                                    function inRect(p, left, top, right, bottom) {
-                                        return p.x >= left && p.x <= right && p.y >= top && p.y <= bottom
-                                    }
-
                                     function hideLauncher() {
                                         if (!DebugHelper.avoidHideWindow) {
                                             LauncherController.visible = false
@@ -692,19 +761,15 @@ InputEventItem {
                                         const p = eventPoint.position
                                         const searchRect = root.searchEditRectInCanvas()
                                         const inSearch = root.pointInRect(p, searchRect)
+                                        if (p.y >= header.y && p.y <= header.y + header.height) {
+                                            return
+                                        }
+
                                         if (p.y >= footer.y && p.y <= footer.y + footer.height && !inSearch) {
                                             hideLauncher()
                                             return
                                         }
 
-                                        const exitLeft = fullscreenCanvas.width - 30 - 40
-                                        const exitTop = 30
-                                        const exitRight = exitLeft + 40
-                                        const exitBottom = exitTop + 40
-                                        if (p.y >= header.y && p.y <= header.y + header.height
-                                                && !inRect(p, exitLeft, exitTop, exitRight, exitBottom)) {
-                                            hideLauncher()
-                                        }
                                     }
                                 }
 
@@ -715,7 +780,7 @@ InputEventItem {
                                     anchors.top: parent.top
                                     bandHeight: baseLayer.topBandHeight
                                     searchActive: footer.searchEdit.text !== ""
-                                    pageView: contentView.pageView
+                                    pageView: footer.searchEdit.text !== "" ? contentView.searchPageView : contentView.pageView
                                     glassSourceItem: glassControlsSampleSource
                                     glassSampleRevision: root.glassSampleRevision
                                     glassLive: root.glassLiveEnabled
@@ -867,6 +932,9 @@ InputEventItem {
 
                                 ToolButton {
                                     id: previousPageButton
+                                    readonly property var targetPageView: footer.searchEdit.text !== ""
+                                        ? contentView.searchPageView
+                                        : contentView.pageView
                                     anchors.left: parent.left
                                     anchors.leftMargin: 30
                                     y: Math.round((root.height - height) / 2)
@@ -874,9 +942,8 @@ InputEventItem {
                                     width: 50
                                     height: 50
                                     hoverEnabled: true
-                                    visible: footer.searchEdit.text === ""
-                                             && contentView.pageView
-                                             && contentView.pageView.count > 1
+                                    visible: targetPageView
+                                             && targetPageView.count > 1
                                              && !folderGridViewPopup.visible
                                     enabled: visible
                                     display: AbstractButton.IconOnly
@@ -918,13 +985,19 @@ InputEventItem {
                                         borderColor: Qt.rgba(1, 1, 1, 0.12)
                                     }
                                     onClicked: {
-                                        contentView.pageView.changedByNonKeyboard = true
-                                        decrementPageIndex(contentView.pageView)
+                                        if (!targetPageView) {
+                                            return
+                                        }
+                                        targetPageView.changedByNonKeyboard = true
+                                        decrementPageIndex(targetPageView)
                                     }
                                 }
 
                                 ToolButton {
                                     id: nextPageButton
+                                    readonly property var targetPageView: footer.searchEdit.text !== ""
+                                        ? contentView.searchPageView
+                                        : contentView.pageView
                                     anchors.right: parent.right
                                     anchors.rightMargin: 30
                                     y: Math.round((root.height - height) / 2)
@@ -932,9 +1005,8 @@ InputEventItem {
                                     width: 50
                                     height: 50
                                     hoverEnabled: true
-                                    visible: footer.searchEdit.text === ""
-                                             && contentView.pageView
-                                             && contentView.pageView.count > 1
+                                    visible: targetPageView
+                                             && targetPageView.count > 1
                                              && !folderGridViewPopup.visible
                                     enabled: visible
                                     display: AbstractButton.IconOnly
@@ -976,8 +1048,11 @@ InputEventItem {
                                         borderColor: Qt.rgba(1, 1, 1, 0.12)
                                     }
                                     onClicked: {
-                                        contentView.pageView.changedByNonKeyboard = true
-                                        incrementPageIndex(contentView.pageView)
+                                        if (!targetPageView) {
+                                            return
+                                        }
+                                        targetPageView.changedByNonKeyboard = true
+                                        incrementPageIndex(targetPageView)
                                     }
                                 }
 

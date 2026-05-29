@@ -5,6 +5,7 @@
 #pragma once
 
 #include <QObject>
+#include <QHash>
 
 class __DaemonLauncher1;
 class AppWiz : public QObject
@@ -15,10 +16,22 @@ public:
     explicit AppWiz(QObject *parent = nullptr);
     ~AppWiz();
 
-    void legacyRequestUninstall(const QString & desktopFileFullPath);
+    void legacyRequestUninstall(const QString &desktopFileFullPath, const QString &displayName = QString(), const QString &iconName = QString());
 
 private:
+    struct UninstallInfo {
+        QString displayName;
+        QString iconName;
+    };
+
+    void notifyUninstallSucceeded(const QString &appId);
+    void notifyUninstallFailed(const QString &appId, const QString &errorMessage);
+    void notifyUninstallCanceled(const QString &appId, const QString &reason);
+    void sendUninstallNotification(const QString &summary, const QString &body, const QString &iconName);
+    UninstallInfo takeUninstallInfo(const QString &appId);
+    void rememberUninstallInfo(const QString &desktopFileFullPath, const QString &displayName, const QString &iconName);
     void updateCurrentWallpaperBlurhash();
 
     __DaemonLauncher1 * m_dbusDaemonLauncherIface;
+    QHash<QString, UninstallInfo> m_pendingUninstalls;
 };

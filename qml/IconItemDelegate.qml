@@ -531,14 +531,14 @@ Control {
             Label {
                 property bool singleRow: font.pixelSize > (isWindowedMode ? Helper.windowed.doubleRowMaxFontSize : Helper.fullscreen.doubleRowMaxFontSize)
                 property bool isNewlyInstalled: model.lastLaunchedTime === 0 && model.installedTime !== 0
+                readonly property int horizontalInset: isWindowedMode ? 8 : 12
                 id: iconItemLabel
                 visible: !root.isDragHover
                 opacity: root.labelOpacity
                 text: isNewlyInstalled ? ("<font color='#669DFF' size='1' style='text-shadow: 0 0 1px rgba(255,255,255,0.1)'>●</font>&nbsp;&nbsp;" + root.text) : root.text
                 textFormat: isNewlyInstalled ? Text.StyledText : Text.PlainText
-                width: parent.width
-                leftPadding: 2
-                rightPadding: 2
+                width: Math.max(0, parent.width - horizontalInset * 2)
+                anchors.horizontalCenter: parent.horizontalCenter
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: singleRow ? Text.NoWrap : Text.Wrap
                 elide: Text.ElideRight

@@ -31,6 +31,7 @@ Item {
 
     property alias pageView: listviewPage
     property alias searchGrid: searchResultGridViewContainer
+    property alias searchPageView: searchResultGridViewContainer.pageView
     readonly property int searchResultCount: searchResultGridViewContainer.resultCount
 
     function resetCurrentGridIndex() {
@@ -57,6 +58,7 @@ Item {
         orientation: ListView.Horizontal
         highlightRangeMode: ListView.StrictlyEnforceRange
         highlightFollowsCurrentItem: true
+        clip: true
         highlightMoveDuration: 200 * LauncherController.animationSpeedScale
         highlightMoveVelocity: -1
         cacheBuffer: width

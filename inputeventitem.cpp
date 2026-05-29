@@ -146,7 +146,10 @@ bool InputEventItem::handleMouseEvent(QEvent::Type type, const QPointF &position
         }
     }
 
-    if (type == QEvent::MouseButtonPress)
+    if (type == QEvent::MouseButtonPress) {
         Q_EMIT pointerPressed(position, int(button), int(modifiers));
+    } else if (type == QEvent::MouseButtonRelease) {
+        Q_EMIT pointerReleased(position, int(button), int(modifiers));
+    }
     return false;
 }

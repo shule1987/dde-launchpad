@@ -72,7 +72,7 @@ public:
     Q_INVOKABLE bool isAutoStart(const QString & desktopId) const;
     Q_INVOKABLE void setAutoStart(const QString & desktopId, bool on = true);
     Q_INVOKABLE bool shouldSkipConfirmUninstallDialog(const QString & desktopId) const;
-    Q_INVOKABLE void uninstallApp(const QString & desktopId);
+    Q_INVOKABLE void uninstallApp(const QString &desktopId, const QString &displayName = QString(), const QString &iconName = QString());
     Q_INVOKABLE bool confirmUninstallApp(const QString & desktopId, const QString &displayName, const QString &iconName);
     Q_INVOKABLE QString popupStandardContextMenu(const QVariantList &items, int topMargin, int rightMargin, int bottomMargin, int leftMargin);
     Q_INVOKABLE void closeStandardContextMenu();

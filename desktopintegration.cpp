@@ -238,11 +238,11 @@ bool DesktopIntegration::shouldSkipConfirmUninstallDialog(const QString &desktop
     return result;
 }
 
-void DesktopIntegration::uninstallApp(const QString &desktopId)
+void DesktopIntegration::uninstallApp(const QString &desktopId, const QString &displayName, const QString &iconName)
 {
     qCInfo(logDesktopIntegration) << "Uninstalling app:" << desktopId;
     const QString & fullPath = AppInfo::fullPathByDesktopId(desktopId);
-    m_appWizIntegration->legacyRequestUninstall(fullPath);
+    m_appWizIntegration->legacyRequestUninstall(fullPath, displayName, iconName);
 }
 
 bool DesktopIntegration::confirmUninstallApp(const QString &desktopId, const QString &displayName, const QString &iconName)
@@ -274,7 +274,7 @@ bool DesktopIntegration::confirmUninstallApp(const QString &desktopId, const QSt
 
     const bool confirmed = dialog.exec() == confirmButton;
     if (confirmed) {
-        uninstallApp(desktopId);
+        uninstallApp(desktopId, displayName, iconName);
     }
 
     Q_UNUSED(cancelButton)

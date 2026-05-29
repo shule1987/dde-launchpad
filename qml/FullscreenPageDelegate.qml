@@ -97,6 +97,14 @@ FocusScope {
         })
     }
 
+    function containsGridItemAt(x, y) {
+        return gridViewContainer.indexAt(x, y) >= 0
+    }
+
+    function gridItemAt(x, y) {
+        return gridViewContainer.itemAt(x, y)
+    }
+
     onIconGridMotionSerialChanged: {
         if (root.ListView.isCurrentItem) {
             launchGridMotionHiding = iconGridMotionHiding
@@ -126,6 +134,20 @@ FocusScope {
         onClicked: function(mouse) {
             if (mouse.button === Qt.RightButton) {
                 mouse.accepted = false
+                return
+            }
+
+            const clickedItem = gridItemAt(mouse.x, mouse.y)
+            const clickedIndex = gridViewContainer.indexAt(mouse.x, mouse.y)
+            if (clickedItem && typeof clickedItem.activateItem === "function") {
+                clickedItem.activateItem()
+                mouse.accepted = true
+                return
+            }
+
+            if (clickedIndex >= 0 || root.dndItem.currentlyDraggedId !== "") {
+                LauncherController.suppressNextHideForInputFocus()
+                mouse.accepted = true
             } else if (!DebugHelper.avoidHideWindow) {
                 LauncherController.visible = false
             }
@@ -328,6 +350,23 @@ FocusScope {
                 gridMotionOpacity = 1
             }
 
+            function activateItem() {
+                if (model.itemType === ItemArrangementProxyModel.FolderItemType) {
+                    iconItemDelegate.folderClicked()
+                } else {
+                    iconItemDelegate.itemClicked()
+                }
+            }
+
+            function activateFolderItem() {
+                if (model.itemType !== ItemArrangementProxyModel.FolderItemType) {
+                    return false
+                }
+
+                iconItemDelegate.folderClicked()
+                return true
+            }
+
             onEntered: function(drag) {
                 if (root.folderGridViewPopup.opened) {
                     root.folderGridViewPopup.close()
@@ -359,9 +398,7 @@ FocusScope {
                 enabled: !root.folderGridViewPopup.visible
                          && root.dndItem.currentlyDraggedId === ""
                 onClicked: {
-                    if (!DebugHelper.avoidHideWindow) {
-                        LauncherController.visible = false
-                    }
+                    delegateRoot.activateItem()
                 }
             }
 
