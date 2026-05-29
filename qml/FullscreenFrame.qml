@@ -391,6 +391,7 @@ InputEventItem {
 
     readonly property bool isHorizontalDock: DesktopIntegration.dockPosition === Qt.UpArrow
                                             || DesktopIntegration.dockPosition === Qt.DownArrow
+    readonly property int pageSwitchDuration: 600
     readonly property real dockReserve: (
         (isHorizontalDock ? DesktopIntegration.dockGeometry.height : DesktopIntegration.dockGeometry.width)
         / Screen.devicePixelRatio
@@ -689,7 +690,7 @@ InputEventItem {
 
                     Timer {
                         id: flipPageDelay
-                        interval: 400
+                        interval: Math.max(1, Math.round(root.pageSwitchDuration * LauncherController.animationSpeedScale))
                         repeat: false
                     }
 

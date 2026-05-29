@@ -24,7 +24,12 @@ Item {
     readonly property int resultCount: SearchFilterProxyModel.count
     readonly property int pageSize: 4 * 7
     readonly property int pageCount: Math.ceil(resultCount / pageSize)
+    readonly property int pageSwitchDuration: 600
     property bool syncingCurrentIndex: false
+
+    function pageSwitchAnimationDuration() {
+        return Math.max(1, Math.round(pageSwitchDuration * LauncherController.animationSpeedScale))
+    }
 
     function setCurrentGlobalIndex(index) {
         if (resultCount <= 0) {
@@ -101,7 +106,7 @@ Item {
         orientation: ListView.Horizontal
         highlightRangeMode: ListView.StrictlyEnforceRange
         highlightFollowsCurrentItem: true
-        highlightMoveDuration: 200 * LauncherController.animationSpeedScale
+        highlightMoveDuration: root.pageSwitchAnimationDuration()
         highlightMoveVelocity: -1
         cacheBuffer: width
         interactive: root.pageCount > 1
@@ -112,9 +117,27 @@ Item {
         property int pendingGridIndex: -1
         property int previousIndex: -1
         property bool changedByNonKeyboard: false
+        property bool isDragging: false
 
         function setCurrentIndex(index) {
             currentIndex = Math.max(0, Math.min(index, count - 1))
+        }
+
+        onDragStarted: {
+            isDragging = true
+        }
+
+        onMovementEnded: {
+            isDragging = false
+        }
+
+        Behavior on contentX {
+            enabled: !searchPagesView.isDragging
+
+            NumberAnimation {
+                duration: root.pageSwitchAnimationDuration()
+                easing.type: Easing.OutCubic
+            }
         }
 
         onCurrentItemChanged: {

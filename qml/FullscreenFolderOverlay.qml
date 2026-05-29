@@ -111,6 +111,7 @@ FocusScope {
     readonly property int previewFadeDuration: 72
     readonly property int contentRevealDelay: 58
     readonly property int contentRevealDuration: 94
+    readonly property int pageSwitchDuration: 600
     readonly property int backgroundCloseDuration: 132
     readonly property int dimOpenDuration: openDuration
     readonly property int dimCloseDuration: 78
@@ -1172,7 +1173,7 @@ FocusScope {
 
                         Timer {
                             id: folderWheelPageDelay
-                            interval: 400
+                            interval: root.animationDuration(root.pageSwitchDuration)
                             repeat: false
                         }
 
@@ -1264,6 +1265,42 @@ FocusScope {
                             clip: gridViews.count > 1
                             currentIndex: folderPageIndicator.currentIndex
                             activeFocusOnTab: false
+
+                            contentItem: ListView {
+                                model: folderPagesView.contentModel
+                                interactive: folderPagesView.interactive
+                                currentIndex: folderPagesView.currentIndex
+                                focus: folderPagesView.focus
+                                spacing: folderPagesView.spacing
+                                orientation: folderPagesView.orientation
+                                snapMode: ListView.SnapOneItem
+                                boundsBehavior: Flickable.StopAtBounds
+                                highlightRangeMode: ListView.StrictlyEnforceRange
+                                preferredHighlightBegin: 0
+                                preferredHighlightEnd: 0
+                                highlightMoveDuration: root.animationDuration(root.pageSwitchDuration)
+                                highlightMoveVelocity: -1
+                                maximumFlickVelocity: 4 * (folderPagesView.orientation === Qt.Horizontal ? width : height)
+
+                                property bool isDragging: false
+
+                                onDragStarted: {
+                                    isDragging = true
+                                }
+
+                                onMovementEnded: {
+                                    isDragging = false
+                                }
+
+                                Behavior on contentX {
+                                    enabled: !isDragging
+
+                                    NumberAnimation {
+                                        duration: root.animationDuration(root.pageSwitchDuration)
+                                        easing.type: Easing.OutCubic
+                                    }
+                                }
+                            }
 
                             property int pendingFocusIndex: 0
                             property bool pageChangedByKeyboard: false

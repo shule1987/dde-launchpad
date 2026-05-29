@@ -33,6 +33,11 @@ Item {
     property alias searchGrid: searchResultGridViewContainer
     property alias searchPageView: searchResultGridViewContainer.pageView
     readonly property int searchResultCount: searchResultGridViewContainer.resultCount
+    readonly property int pageSwitchDuration: 600
+
+    function pageSwitchAnimationDuration() {
+        return Math.max(1, Math.round(pageSwitchDuration * LauncherController.animationSpeedScale))
+    }
 
     function resetCurrentGridIndex() {
         if (listviewPage.currentItem) {
@@ -59,7 +64,7 @@ Item {
         highlightRangeMode: ListView.StrictlyEnforceRange
         highlightFollowsCurrentItem: true
         clip: true
-        highlightMoveDuration: 200 * LauncherController.animationSpeedScale
+        highlightMoveDuration: root.pageSwitchAnimationDuration()
         highlightMoveVelocity: -1
         cacheBuffer: width
         activeFocusOnTab: true
@@ -85,6 +90,15 @@ Item {
 
         onMovementEnded: {
             isDragging = false
+        }
+
+        Behavior on contentX {
+            enabled: !listviewPage.isDragging
+
+            NumberAnimation {
+                duration: root.pageSwitchAnimationDuration()
+                easing.type: Easing.OutCubic
+            }
         }
 
         function setCurrentIndex(index) {

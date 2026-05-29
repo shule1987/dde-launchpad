@@ -57,6 +57,7 @@ Popup {
     property int cs: 110 // * 5 / 4
     property real folderCellWidth: cs
     property real folderCellHeight: cs
+    readonly property int pageSwitchDuration: 600
     // anchors.centerIn: parent // seems dtkdeclarative's Popup doesn't have anchors.centerIn
 
     width: folderCellWidth * 4 + 20 /* padding */
@@ -263,7 +264,7 @@ Popup {
 
                     Timer {
                         id: folderWheelPageDelay
-                        interval: 400
+                        interval: root.scaledDuration(root.pageSwitchDuration)
                         repeat: false
                     }
 
@@ -356,6 +357,42 @@ Popup {
 
                         currentIndex: folderPageIndicator.currentIndex
                         activeFocusOnTab: false
+
+                        contentItem: ListView {
+                            model: folderPagesView.contentModel
+                            interactive: folderPagesView.interactive
+                            currentIndex: folderPagesView.currentIndex
+                            focus: folderPagesView.focus
+                            spacing: folderPagesView.spacing
+                            orientation: folderPagesView.orientation
+                            snapMode: ListView.SnapOneItem
+                            boundsBehavior: Flickable.StopAtBounds
+                            highlightRangeMode: ListView.StrictlyEnforceRange
+                            preferredHighlightBegin: 0
+                            preferredHighlightEnd: 0
+                            highlightMoveDuration: root.scaledDuration(root.pageSwitchDuration)
+                            highlightMoveVelocity: -1
+                            maximumFlickVelocity: 4 * (folderPagesView.orientation === Qt.Horizontal ? width : height)
+
+                            property bool isDragging: false
+
+                            onDragStarted: {
+                                isDragging = true
+                            }
+
+                            onMovementEnded: {
+                                isDragging = false
+                            }
+
+                            Behavior on contentX {
+                                enabled: !isDragging
+
+                                NumberAnimation {
+                                    duration: root.scaledDuration(root.pageSwitchDuration)
+                                    easing.type: Easing.OutCubic
+                                }
+                            }
+                        }
                         //达到起始和末尾应用按下左右键时进行标志，-1往左翻页(标志前一页的最后一个应用），0代表往右翻页（标志后一页的第一个应用）
                         property int pendingFocusIndex: 0
                         // 标记翻页是否由键盘操作触发，鼠标滚轮翻页时不应设置选中焦点
