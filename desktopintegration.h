@@ -5,13 +5,16 @@
 #pragma once
 
 #include <QObject>
+#include <QPointer>
 #include <QRect>
 #include <QStandardPaths>
+#include <QVariant>
 #include <QtQml/qqml.h>
 
 class AppWiz;
 class DdeDock;
 class Appearance;
+class QMenu;
 class DesktopIntegration : public QObject
 {
     Q_OBJECT
@@ -70,6 +73,9 @@ public:
     Q_INVOKABLE void setAutoStart(const QString & desktopId, bool on = true);
     Q_INVOKABLE bool shouldSkipConfirmUninstallDialog(const QString & desktopId) const;
     Q_INVOKABLE void uninstallApp(const QString & desktopId);
+    Q_INVOKABLE bool confirmUninstallApp(const QString & desktopId, const QString &displayName, const QString &iconName);
+    Q_INVOKABLE QString popupStandardContextMenu(const QVariantList &items, int topMargin, int rightMargin, int bottomMargin, int leftMargin);
+    Q_INVOKABLE void closeStandardContextMenu();
     Q_INVOKABLE double scaleFactor() const;
     qreal opacity() const;
     qreal iconScaleFactor() const;
@@ -92,5 +98,6 @@ private:
     AppWiz * m_appWizIntegration;
     DdeDock * m_dockIntegration;
     Appearance * m_appearanceIntegration;
+    QPointer<QMenu> m_contextMenu;
     qreal m_iconScaleFactor;
 };

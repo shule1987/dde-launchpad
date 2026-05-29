@@ -23,8 +23,8 @@ set(DTK_NS Dtk6)
 set(ASQT_NS AppStreamQt)
 
 find_package(QT NAMES ${QT_NS} REQUIRED COMPONENTS Core)
-find_package(${QT_NS} REQUIRED COMPONENTS Core Gui Concurrent Qml Svg Quick QuickControls2 LinguistTools)
-find_package(${DTK_NS} REQUIRED COMPONENTS Core Gui)
+find_package(${QT_NS} REQUIRED COMPONENTS Core Gui Concurrent Qml Svg Quick QuickControls2 Widgets LinguistTools)
+find_package(${DTK_NS} REQUIRED COMPONENTS Core Gui Widget)
 find_package(${ASQT_NS} 1.0 REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(XCB REQUIRED xcb)
@@ -138,7 +138,9 @@ set_target_properties(launchpadcommon PROPERTIES PREFIX "")
 target_link_libraries(launchpadcommon PUBLIC
     ${DTK_NS}::Core
     ${DTK_NS}::Gui
+    ${DTK_NS}::Widget
     Qt::GuiPrivate
+    Qt::Widgets
     Qt::Qml
     Qt::Quick
     Qt::QuickControls2

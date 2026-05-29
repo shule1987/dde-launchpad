@@ -6,6 +6,7 @@ import QtQuick 2.15
 import QtQml.Models 2.15
 import QtQuick.Controls 2.15 as QQC2
 import org.deepin.dtk 1.0
+import org.deepin.dtk 1.0 as D
 import org.deepin.dtk.private 1.0
 import org.deepin.dtk.style 1.0 as DStyle
 
@@ -263,57 +264,20 @@ FocusScope {
         }
     }
 
-    Menu {
+    D.Menu {
         id: ddeCategoryMenu
         width: 150
         modal: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+        closePolicy: QQC2.Popup.CloseOnEscape | QQC2.Popup.CloseOnPressOutsideParent
 
         property var existingSections: []
         Repeater {
             model: ddeCategoryMenu.existingSections
-            delegate: MenuItem {
-                id: menuItem
+            delegate: D.MenuItem {
                 text: getCategoryName(modelData)
-                textColor: DStyle.Style.menu.itemText
                 font: DTK.fontManager.t6
                 onTriggered: {
                     scrollToDDECategory(modelData)
-                }
-                contentItem: IconLabel {
-                    alignment: Qt.AlignCenter
-                    text: menuItem.text
-                    color: parent.palette.windowText
-                    font: menuItem.font
-                }
-                background: BoxPanel {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 2
-                    anchors.right: parent.right
-                    anchors.rightMargin: 2
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    visible: menuItem.highlighted
-                    outsideBorderColor: null
-                    insideBorderColor: null
-                    radius: 6
-
-                    property Palette background: Palette {
-                        normal {
-                            common: Qt.rgba(0, 0, 0, 0.1)
-                            crystal: Qt.rgba(0, 0, 0, 0.1)
-                        }
-                        normalDark {
-                            common: Qt.rgba(1, 1, 1, 0.1)
-                            crystal: Qt.rgba(1, 1, 1, 0.1)
-                        }
-                        hovered {
-                            common: Qt.rgba(16.0 / 255, 16.0 / 255, 16.0 / 255, 0.1)
-                            crystal: Qt.rgba(16.0 / 255, 16.0 / 255, 16.0 / 255, 0.1)
-                        }
-                    }
-                    color1: background
-                    color2: background
                 }
             }
         }
@@ -322,12 +286,6 @@ FocusScope {
             if (!visible) {
                 listView.opacity = 1
             }
-        }
-        background: FloatingPanel {
-            radius: DStyle.Style.menu.radius
-            backgroundColor: ddeCategoryMenu.backgroundColor
-            backgroundNoBlurColor: ddeCategoryMenu.backgroundNoBlurColor
-            dropShadowColor: null
         }
     }
 
@@ -381,7 +339,7 @@ FocusScope {
 
         model: delegateCategorizedModel
 
-        ScrollBar.vertical: ScrollBar { }
+        ScrollBar.vertical: D.ScrollBar { }
 
         Keys.onPressed: {
             if (CategorizedSortProxyModel.categoryType === CategorizedSortProxyModel.Alphabetary

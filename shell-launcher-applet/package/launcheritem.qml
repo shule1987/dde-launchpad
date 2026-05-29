@@ -757,67 +757,6 @@ AppletItem {
         }
     }
 
-    DialogWindow {
-        id: confirmUninstallDlg
-
-        property string appId: ""
-        property string appName: ""
-
-        DLayerShellWindow.anchors: DLayerShellWindow.AnchorNone
-
-        minimumWidth: layout.implicitWidth + 2 * DStyle.Style.dialogWindow.contentHMargin
-        minimumHeight: layout.implicitHeight + DStyle.Style.dialogWindow.titleBarHeight
-        maximumWidth: minimumWidth
-        maximumHeight: minimumHeight
-
-        onVisibleChanged: {
-            if (!visible) {
-                LauncherController.setAvoidHide(true)
-                if (LauncherController.currentFrame === "FullscreenFrame") {
-                    fullscreenFrame.requestActivate() 
-                } 
-            }
-        }
-
-        ColumnLayout {
-            id: layout
-            spacing: 0
-            Label {
-                font: DTK.fontManager.t5
-                text: qsTr("Are you sure you want to uninstall \"%1\"?").arg(confirmUninstallDlg.appName)
-                wrapMode: Text.Wrap
-                horizontalAlignment: Text.AlignHCenter
-                Layout.preferredWidth: 400
-                Layout.alignment: Qt.AlignCenter
-                Layout.margins: 10
-            }
-            RowLayout {
-                spacing: 10
-                Layout.fillWidth: true
-                Layout.topMargin: 20
-                Layout.bottomMargin: 10
-                
-                Button {
-                    id: cancelButton
-                    Layout.fillWidth: true
-                    text: qsTr("Cancel")
-                    onClicked: {
-                        confirmUninstallDlg.close()
-                    }
-                }               
-                WarningButton {
-                    id: confirmButton
-                    Layout.fillWidth: true
-                    text: qsTr("Confirm")
-                    onClicked: {
-                        DesktopIntegration.uninstallApp(confirmUninstallDlg.appId)
-                        confirmUninstallDlg.close()
-                    }
-                }
-            }
-        }
-    }
-
     D.DciIcon {
         id: icon
         anchors.centerIn: parent

@@ -9,19 +9,32 @@
 #include <DDesktopEntry>
 #include <DStandardPaths>
 #include <DDesktopServices>
+#include <DDialog>
+#include <DMenu>
+#include <QAction>
+#include <QApplication>
+#include <QCursor>
+#include <QMenu>
+#include <QPixmap>
 #include <QRect>
 #include <QGuiApplication>
 #include <QLoggingCategory>
+#include <QScreen>
+#include <QWindow>
 #include <appinfo.h>
 #include <appmgr.h>
+
+#include <algorithm>
 
 #include <AppStreamQt/pool.h>
 
 #include "appwiz.h"
 #include "ddedock.h"
 #include "appearance.h"
+#include "iconutils.h"
 
 DCORE_USE_NAMESPACE
+DWIDGET_USE_NAMESPACE
 
 namespace {
 Q_LOGGING_CATEGORY(logDesktopIntegration, "org.deepin.dde.launchpad.desktop")
@@ -230,6 +243,107 @@ void DesktopIntegration::uninstallApp(const QString &desktopId)
     qCInfo(logDesktopIntegration) << "Uninstalling app:" << desktopId;
     const QString & fullPath = AppInfo::fullPathByDesktopId(desktopId);
     m_appWizIntegration->legacyRequestUninstall(fullPath);
+}
+
+bool DesktopIntegration::confirmUninstallApp(const QString &desktopId, const QString &displayName, const QString &iconName)
+{
+    DDialog dialog(qApp->activeWindow());
+    dialog.setTitle(tr("Uninstall"));
+    dialog.setMessage(tr("Are you sure you want to uninstall \"%1\"?").arg(displayName));
+    dialog.setWordWrapMessage(true);
+    dialog.setCloseButtonVisible(true);
+    dialog.setWindowModality(Qt::ApplicationModal);
+    dialog.setWindowFlag(Qt::WindowStaysOnTopHint, true);
+
+    QPixmap iconPixmap;
+    IconUtils::getThemeIcon(iconPixmap, iconName, 32);
+    if (!iconPixmap.isNull()) {
+        dialog.setIcon(QIcon(iconPixmap));
+    }
+
+    const int cancelButton = dialog.addButton(tr("Cancel"));
+    const int confirmButton = dialog.addButton(tr("Confirm"), true, DDialog::ButtonWarning);
+
+    if (QWindow *parentWindow = QGuiApplication::focusWindow()) {
+        dialog.winId();
+        if (dialog.windowHandle()) {
+            dialog.windowHandle()->setTransientParent(parentWindow);
+        }
+        dialog.moveToCenterByRect(parentWindow->geometry());
+    }
+
+    const bool confirmed = dialog.exec() == confirmButton;
+    if (confirmed) {
+        uninstallApp(desktopId);
+    }
+
+    Q_UNUSED(cancelButton)
+    return confirmed;
+}
+
+QString DesktopIntegration::popupStandardContextMenu(const QVariantList &items, int topMargin, int rightMargin, int bottomMargin, int leftMargin)
+{
+    DMenu menu;
+    m_contextMenu = &menu;
+
+    for (const QVariant &item : items) {
+        const QVariantMap itemMap = item.toMap();
+        if (!itemMap.value(QStringLiteral("visible"), true).toBool()) {
+            continue;
+        }
+
+        if (itemMap.value(QStringLiteral("separator")).toBool()) {
+            menu.addSeparator();
+            continue;
+        }
+
+        QAction *action = menu.addAction(itemMap.value(QStringLiteral("text")).toString());
+        action->setData(itemMap.value(QStringLiteral("command")).toString());
+        action->setEnabled(itemMap.value(QStringLiteral("enabled"), true).toBool());
+
+        if (itemMap.value(QStringLiteral("checkable")).toBool()) {
+            action->setCheckable(true);
+            action->setChecked(itemMap.value(QStringLiteral("checked")).toBool());
+        }
+    }
+
+    if (menu.actions().isEmpty()) {
+        m_contextMenu.clear();
+        return {};
+    }
+
+    QPoint pos = QCursor::pos();
+    QScreen *screen = QGuiApplication::screenAt(pos);
+    if (!screen) {
+        screen = QGuiApplication::primaryScreen();
+    }
+
+    if (screen) {
+        const QRect availableGeometry = screen->geometry().adjusted(leftMargin, topMargin, -rightMargin, -bottomMargin);
+        if (!availableGeometry.isEmpty()) {
+            const QSize menuSize = menu.sizeHint();
+            const int maxX = std::max(availableGeometry.left(), availableGeometry.right() - menuSize.width() + 1);
+            const int maxY = std::max(availableGeometry.top(), availableGeometry.bottom() - menuSize.height() + 1);
+            pos.setX(std::clamp(pos.x(), availableGeometry.left(), maxX));
+            pos.setY(std::clamp(pos.y(), availableGeometry.top(), maxY));
+        }
+    }
+
+    QAction *selectedAction = menu.exec(pos);
+    m_contextMenu.clear();
+
+    if (!selectedAction) {
+        return {};
+    }
+
+    return selectedAction->data().toString();
+}
+
+void DesktopIntegration::closeStandardContextMenu()
+{
+    if (m_contextMenu) {
+        m_contextMenu->close();
+    }
 }
 
 DesktopIntegration::DesktopIntegration(QObject *parent)
