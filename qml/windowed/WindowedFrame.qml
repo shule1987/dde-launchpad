@@ -16,7 +16,7 @@ import "."
 InputEventItem {
     id: baseLayer
     objectName: "WindowedFrame-BaseLayer"
-    inputMethodSource: bottomBar.searchEdit
+    inputMethodSource: folderGridViewPopup.folderNameEditing ? null : bottomBar.searchEdit
 
     visible: true
     focus: true
@@ -264,8 +264,12 @@ InputEventItem {
         }
     }
 
-    Keys.forwardTo: [bottomBar.searchEdit]
+    Keys.forwardTo: folderGridViewPopup.folderNameEditing ? [] : [bottomBar.searchEdit]
     Keys.onPressed: function (event) {
+        if (folderGridViewPopup.folderNameEditing) {
+            return
+        }
+
         if (bottomBar.searchEdit.focus === true || baseLayer.focus === true) {
             // the SearchEdit will catch the key event first, and events that it won't accept will then got here
             switch (event.key) {
@@ -290,6 +294,10 @@ InputEventItem {
         }
     }
     onInputReceived: function(text){
+        if (folderGridViewPopup.folderNameEditing) {
+            return
+        }
+
         if (bottomBar.searchEdit.text !== "" || bottomBar.searchEdit.focus !== true) {
             bottomBar.searchEdit.text = text
             bottomBar.searchEdit.focus = true

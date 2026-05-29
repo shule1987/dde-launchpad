@@ -23,6 +23,7 @@ launchpad_add_tests(
     itemspagetest
     gioappinfotest
     searchfilterproxymodeltest
+    inputeventitemtest
 )
 
 target_sources(launchpad-searchfilterproxymodeltest PRIVATE

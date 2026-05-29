@@ -49,6 +49,7 @@ FocusScope {
     property bool opened: visible && !closeAnimation.running
     readonly property bool animationRunning: openAnimation.running || closeAnimation.running
     property bool folderItemMoveEnabled: false
+    property bool folderNameEditing: false
     property var dndItem: null
     property var focusTarget: null
     property var launchAppFn: null
@@ -319,6 +320,7 @@ FocusScope {
         backgroundSnapshotUrl = ""
         pendingOpenSnapshotCount = 0
         folderItemMoveEnabled = false
+        folderNameEditing = false
         sourceIcons = []
         sourcePreviewIconRects = []
         sourceIconScaleFactor = 1.0
@@ -1000,6 +1002,7 @@ FocusScope {
 
                     property bool nameEditing: false
                     property int titleMargin: 30
+                    onNameEditingChanged: root.folderNameEditing = nameEditing
 
                     property Palette titleTextColor: Palette {
                         normal {

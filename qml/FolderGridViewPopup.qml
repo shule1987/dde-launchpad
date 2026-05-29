@@ -25,6 +25,7 @@ Popup {
     property Item backgroundSourceItem: null
     property real contentRevealProgress: 0
     property bool folderItemMoveEnabled: false
+    property bool folderNameEditing: false
 
 
 
@@ -80,6 +81,7 @@ Popup {
         contentRevealProgress = 0
         folderItemMoveEnableTimer.stop()
         folderItemMoveEnabled = false
+        folderNameEditing = false
     }
 
     onAboutToShow: {
@@ -136,6 +138,7 @@ Popup {
                     property bool nameEditing: false
                     property alias folderName: folderNameEdit.text
                     property int titleMargin: isWindowedMode ? 20 : 30
+                    onNameEditingChanged: root.folderNameEditing = nameEditing
 
                     signal closeFolder()
 

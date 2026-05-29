@@ -39,6 +39,7 @@ signals:
 
 private:
     bool handleMouseEvent(QEvent::Type type, const QPointF &position, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
+    bool hasEditableFocus() const;
     QQuickItem* m_inputMethodSource = nullptr;
 };
 

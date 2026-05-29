@@ -120,7 +120,7 @@ Control {
                 wrapMode: singleRow ? Text.NoWrap : Text.Wrap
                 elide: Text.ElideRight
                 maximumLineCount: singleRow ? 1 : 2
-                font: DTK.fontManager.t9
+                font: LauncherController.adjustFontWeight(DTK.fontManager.t9, Font.Light)
             }
         }
         ToolTip.text: root.text

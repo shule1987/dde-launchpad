@@ -16,7 +16,7 @@ InputEventItem {
     id: root
     anchors.fill: parent
     objectName: "FullscreenFrame-InputEventItem"
-    inputMethodSource: footer.searchEdit
+    inputMethodSource: folderGridViewPopup.folderNameEditing ? null : footer.searchEdit
     focus: true
 
     property bool dockAreaReservedByWindow: false
@@ -99,7 +99,7 @@ InputEventItem {
         const pageItem = pendingGridPressPageItem
         clearPendingGridPress()
 
-        if (!pressedItem || !pageItem || folderGridViewPopup.visible || root.launcherDragActive) {
+        if (!pressedItem || !pageItem || footer.searchEdit.text !== "" || folderGridViewPopup.visible || root.launcherDragActive) {
             return
         }
         if (typeof pageItem.gridItemAt !== "function"
@@ -134,6 +134,14 @@ InputEventItem {
         const p = fullscreenCanvas.mapFromItem(root, position.x, position.y)
         const searchRect = searchEditRectInCanvas()
 
+        if (footer.searchEdit.text !== ""
+                && contentView.searchResultCount <= 0
+                && p.y >= contentArea.y
+                && p.y <= contentArea.y + contentArea.height) {
+            clearPendingGridPress()
+            return
+        }
+
         if (p.y >= header.y && p.y <= header.y + header.height) {
             const headerPoint = header.mapFromItem(fullscreenCanvas, p.x, p.y)
             if (header.switchPageIndicatorAt(headerPoint.x, headerPoint.y)) {
@@ -148,6 +156,11 @@ InputEventItem {
 
         if (p.y >= footer.y && p.y <= footer.y + footer.height && !pointInRect(p, searchRect)) {
             LauncherController.visible = false
+            return
+        }
+
+        if (footer.searchEdit.text !== "") {
+            clearPendingGridPress()
             return
         }
 
@@ -700,6 +713,13 @@ InputEventItem {
                                         if (root.pointInRect(Qt.point(mouse.x, mouse.y), root.searchEditRectInCanvas())) {
                                             return
                                         }
+                                        if (footer.searchEdit.text !== "") {
+                                            footer.searchEdit.text = ""
+                                            footer.searchEdit.focus = false
+                                            baseLayer.focus = true
+                                            root.clearPendingGridPress()
+                                            return
+                                        }
                                         if (!DebugHelper.avoidHideWindow) {
                                             LauncherController.visible = false
                                         }
@@ -822,6 +842,21 @@ InputEventItem {
                                         launchAppFn: function(desktopId) { launchApp(desktopId) }
                                         showContextMenuFn: function(item, model) { showContextMenu(item, model) }
                                         getCategoryNameFn: function(section) { return getCategoryName(section) }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        visible: footer.searchEdit.text !== ""
+                                                 && contentView.searchResultCount <= 0
+                                                 && !folderGridViewPopup.visible
+                                        enabled: visible
+                                        acceptedButtons: Qt.LeftButton
+                                        onClicked: {
+                                            footer.searchEdit.text = ""
+                                            footer.searchEdit.focus = false
+                                            baseLayer.focus = true
+                                            root.clearPendingGridPress()
+                                        }
                                     }
                                 }
 
@@ -1242,9 +1277,13 @@ InputEventItem {
         }
     }
 
-    Keys.forwardTo: [footer.searchEdit]
+    Keys.forwardTo: folderGridViewPopup.folderNameEditing ? [] : [footer.searchEdit]
 
     Keys.onPressed: function(event) {
+        if (folderGridViewPopup.folderNameEditing) {
+            return
+        }
+
         if (!baseLayer.focus) {
             return
         }
@@ -1356,6 +1395,10 @@ InputEventItem {
     }
 
     onInputReceived: function(text) {
+        if (folderGridViewPopup.folderNameEditing) {
+            return
+        }
+
         if (footer.searchEdit.text !== "" || footer.searchEdit.focus !== true) {
             footer.searchEdit.text = text
             footer.searchEdit.focus = true

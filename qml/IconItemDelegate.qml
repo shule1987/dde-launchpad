@@ -34,8 +34,13 @@ Control {
     property bool isDragHover: false
     readonly property bool isWindowedMode: LauncherController.currentFrame === "WindowedFrame"
     readonly property real folderBackgroundRadius: dragAndfolderBackground.radius
-    property alias displayFont: iconItemLabel.font
+    property font displayFont: root.font
     property real iconScaleFactor: 1.0
+    readonly property real labelSpacerHeight: isWindowedMode ? 4 : root.height / 10
+    readonly property real gridIconVisualScale: isWindowedMode ? 1 : 1.12
+    readonly property real folderIconSizeRatio: 0.8
+    readonly property real gridLabelGapReduction: isWindowedMode ? 0
+        : Math.max(0, Math.min(root.height / 14, labelSpacerHeight - 4))
     property bool iconIntroAnimRunning: false
     property bool hoverVisualEnabled: true
     property real labelOpacity: 1.0
@@ -49,20 +54,20 @@ Control {
     property url dragImageCacheUrl: ""
 
     function folderBackgroundRect(targetItem) {
-        const itemPos = iconContainer.mapToItem(targetItem, 0, 0)
-        return Qt.rect(itemPos.x, itemPos.y, iconContainer.width, iconContainer.height)
+        const itemPos = iconVisualItem.mapToItem(targetItem, 0, 0)
+        return Qt.rect(itemPos.x, itemPos.y, iconVisualItem.width, iconVisualItem.height)
     }
 
     function folderBackgroundLocalRect() {
-        const itemPos = iconContainer.mapToItem(root, 0, 0)
-        return Qt.rect(itemPos.x, itemPos.y, iconContainer.width, iconContainer.height)
+        const itemPos = iconVisualItem.mapToItem(root, 0, 0)
+        return Qt.rect(itemPos.x, itemPos.y, iconVisualItem.width, iconVisualItem.height)
     }
 
     function appIconVisualLocalRect() {
         const containerRect = folderBackgroundLocalRect()
-        const visualScale = Math.max(0.01, (iconContainer.width / root.maxIconSize) * root.iconScaleFactor)
-        const visualWidth = iconContainer.width * visualScale
-        const visualHeight = iconContainer.height * visualScale
+        const visualScale = Math.max(0.01, (iconVisualItem.width / root.maxIconSize) * root.iconScaleFactor)
+        const visualWidth = iconVisualItem.width * visualScale
+        const visualHeight = iconVisualItem.height * visualScale
         return Qt.rect(
             containerRect.x + (containerRect.width - visualWidth) / 2,
             containerRect.y + (containerRect.height - visualHeight) / 2,
@@ -73,8 +78,8 @@ Control {
 
     function folderPreviewIconVisualRect(index, targetItem) {
         const spacing = 5
-        const itemWidth = Math.max(1, (iconContainer.width - ((folderPreviewGridSize + 1) * spacing)) / folderPreviewGridSize)
-        const itemHeight = Math.max(1, (iconContainer.height - ((folderPreviewGridSize + 1) * spacing)) / folderPreviewGridSize)
+        const itemWidth = Math.max(1, (iconVisualItem.width - ((folderPreviewGridSize + 1) * spacing)) / folderPreviewGridSize)
+        const itemHeight = Math.max(1, (iconVisualItem.height - ((folderPreviewGridSize + 1) * spacing)) / folderPreviewGridSize)
         const column = index % folderPreviewGridSize
         const row = Math.floor(index / folderPreviewGridSize)
         const itemX = (column + 1) * spacing + column * itemWidth
@@ -82,7 +87,7 @@ Control {
         const visualScale = Math.max(0.01, (itemWidth / root.maxIconSizeInFolder) * root.iconScaleFactor)
         const visualWidth = itemWidth * visualScale
         const visualHeight = itemHeight * visualScale
-        const itemPos = iconContainer.mapToItem(
+        const itemPos = iconVisualItem.mapToItem(
             targetItem,
             itemX + (itemWidth - visualWidth) / 2,
             itemY + (itemHeight - visualHeight) / 2
@@ -158,157 +163,171 @@ Control {
 
             Item {
                 id: iconContainer
-                width: parent.width / 2
-                height: width
+                width: parent.width / 2 * root.gridIconVisualScale
+                height: parent.width / 2 + root.gridLabelGapReduction
+                readonly property real visualSlotSize: width
+                readonly property real visualSlotY: root.gridLabelGapReduction > 0
+                    ? height - visualSlotSize
+                    : (height - visualSlotSize) / 2
                 anchors.horizontalCenter: parent.horizontalCenter
 
-                Rectangle {
-                    id: dragAndfolderBackground
-                    visible: root.glassSourceItem === null && opacity > 0
-                    opacity: root.icons !== undefined || (root.isDragHover && !isWindowedMode) ? 1 : 0
-                    scale:  (root.isDragHover && !isWindowedMode) ? 1.2 : 1
-                    color: "#26FFFFFF"
-                    Behavior on opacity {
-                        NumberAnimation { duration: 200 * LauncherController.animationSpeedScale; easing.type: Easing.OutQuad }
-                    }
-                    Behavior on scale {
-                        NumberAnimation { duration: 200 * LauncherController.animationSpeedScale; easing.type: Easing.OutCubic }
-                    }
-                    anchors.fill: parent
-                    radius: 12
+                Item {
+                    id: iconVisualItem
+                    width: !isWindowedMode && root.icons !== undefined
+                        ? iconContainer.width * root.folderIconSizeRatio
+                        : iconContainer.width
+                    height: width
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: iconContainer.visualSlotY + (iconContainer.visualSlotSize - height) / 2
 
-                    NumberAnimation {
-                        id: ininAni
-                        target: dragAndfolderBackground
-                        property: "scale"
-                        running: false
-                        from: 1.2
-                        to: 1
-                        duration: 200 * LauncherController.animationSpeedScale
-                        easing.type: Easing.OutCubic
-                    }
-
-                    Component.onCompleted: {
-                        if (root.icons !== undefined && dndItem.mergeAnimTargetIcon && dndItem.mergeAnimTargetIcon2) {
-                            ininAni.start()
+                    Rectangle {
+                        id: dragAndfolderBackground
+                        visible: root.glassSourceItem === null && opacity > 0
+                        opacity: root.icons !== undefined || (root.isDragHover && !isWindowedMode) ? 1 : 0
+                        scale:  (root.isDragHover && !isWindowedMode) ? 1.2 : 1
+                        color: "#26FFFFFF"
+                        Behavior on opacity {
+                            NumberAnimation { duration: 200 * LauncherController.animationSpeedScale; easing.type: Easing.OutQuad }
                         }
-                    }
-                }
-
-                FrostedGlassBackground {
-                    anchors.fill: parent
-                    visible: root.glassSourceItem !== null && opacity > 0
-                    opacity: root.icons !== undefined || (root.isDragHover && !isWindowedMode) ? 1 : 0
-                    scale: (root.isDragHover && !isWindowedMode) ? 1.2 : 1
-                    radius: dragAndfolderBackground.radius
-                    sourceItem: root.glassSourceItem
-                    sampleRevision: root.glassSampleRevision
-                    live: root.glassLive
-                    effectEnabled: root.glassEffect
-                    textureScale: 0.5
-
-                    Behavior on opacity {
-                        NumberAnimation { duration: 200 * LauncherController.animationSpeedScale; easing.type: Easing.OutQuad }
-                    }
-                    Behavior on scale {
-                        NumberAnimation { duration: 200 * LauncherController.animationSpeedScale; easing.type: Easing.OutCubic }
-                    }
-                }
-
-                Loader {
-                    id: iconLoader
-                    anchors.fill: parent
-                    asynchronous: true
-                    sourceComponent: root.icons !== undefined ? folderComponent : imageComponent
-
-                    MouseArea {
-                        id: mouseArea
+                        Behavior on scale {
+                            NumberAnimation { duration: 200 * LauncherController.animationSpeedScale; easing.type: Easing.OutCubic }
+                        }
                         anchors.fill: parent
-                        hoverEnabled: false
-                        drag.target: root.dndEnabled ? root : null
-                        drag.threshold: 1
+                        radius: 12
 
-                        function startProxyDragWhenReady() {
-                            if (!mouseArea.drag.active || dndItem.Drag.active) {
-                                return
-                            }
-                            if (!root.dragImageReady || root.Drag.imageSource === "") {
-                                root.proxyDragPending = true
-                                return
-                            }
-
-                            root.proxyDragPending = false
-                            dndItem.currentlyDraggedId = root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]
-                            dndItem.currentlyDraggedIconName = root.iconSource
-                            dndItem.Drag.hotSpot = root.Drag.hotSpot
-                            dndItem.Drag.mimeData = root.Drag.mimeData
-                            dndItem.mergeSize = Math.min(iconLoader.width, iconLoader.height)
-                            dndItem.Drag.imageSource = root.Drag.imageSource
-                            dndItem.Drag.dragType = root.Drag.Automatic
-                            Qt.callLater(function() {
-                                if (mouseArea.drag.active && dndItem.currentlyDraggedId === root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]) {
-                                    dndItem.Drag.active = true
-                                }
-                            })
+                        NumberAnimation {
+                            id: ininAni
+                            target: dragAndfolderBackground
+                            property: "scale"
+                            running: false
+                            from: 1.2
+                            to: 1
+                            duration: 200 * LauncherController.animationSpeedScale
+                            easing.type: Easing.OutCubic
                         }
 
-                        onPressed: function (mouse) {
-                            if (mouse.button === Qt.LeftButton && root.dndEnabled) {
-                                root.proxyDragPending = false
-                                root.Drag.hotSpot = mapToItem(iconLoader, Qt.point(mouse.x, mouse.y))
-                                const cacheKey = root.currentDragImageCacheKey()
-                                if (root.dragImageReady
-                                        && root.dragImageCacheKey === cacheKey
-                                        && root.dragImageCacheUrl !== "") {
-                                    root.Drag.imageSource = root.dragImageCacheUrl
+                        Component.onCompleted: {
+                            if (root.icons !== undefined && dndItem.mergeAnimTargetIcon && dndItem.mergeAnimTargetIcon2) {
+                                ininAni.start()
+                            }
+                        }
+                    }
+
+                    FrostedGlassBackground {
+                        anchors.fill: parent
+                        visible: root.glassSourceItem !== null && opacity > 0
+                        opacity: root.icons !== undefined || (root.isDragHover && !isWindowedMode) ? 1 : 0
+                        scale: (root.isDragHover && !isWindowedMode) ? 1.2 : 1
+                        radius: dragAndfolderBackground.radius
+                        sourceItem: root.glassSourceItem
+                        sampleRevision: root.glassSampleRevision
+                        live: root.glassLive
+                        effectEnabled: root.glassEffect
+                        textureScale: 0.5
+
+                        Behavior on opacity {
+                            NumberAnimation { duration: 200 * LauncherController.animationSpeedScale; easing.type: Easing.OutQuad }
+                        }
+                        Behavior on scale {
+                            NumberAnimation { duration: 200 * LauncherController.animationSpeedScale; easing.type: Easing.OutCubic }
+                        }
+                    }
+
+                    Loader {
+                        id: iconLoader
+                        anchors.fill: parent
+                        asynchronous: true
+                        sourceComponent: root.icons !== undefined ? folderComponent : imageComponent
+
+                        MouseArea {
+                            id: mouseArea
+                            anchors.fill: parent
+                            hoverEnabled: false
+                            drag.target: root.dndEnabled ? root : null
+                            drag.threshold: 1
+
+                            function startProxyDragWhenReady() {
+                                if (!mouseArea.drag.active || dndItem.Drag.active) {
+                                    return
+                                }
+                                if (!root.dragImageReady || root.Drag.imageSource === "") {
+                                    root.proxyDragPending = true
                                     return
                                 }
 
-                                root.dragImageReady = false
-                                root.Drag.imageSource = ""
-                                iconLoader.grabToImage(function(result) {
-                                    root.Drag.imageSource = result.url
-                                    root.dragImageCacheKey = cacheKey
-                                    root.dragImageCacheUrl = result.url
-                                    root.dragImageReady = true
-                                    if (root.proxyDragPending || mouseArea.drag.active) {
-                                        mouseArea.startProxyDragWhenReady()
+                                root.proxyDragPending = false
+                                dndItem.currentlyDraggedId = root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]
+                                dndItem.currentlyDraggedIconName = root.iconSource
+                                dndItem.Drag.hotSpot = root.Drag.hotSpot
+                                dndItem.Drag.mimeData = root.Drag.mimeData
+                                dndItem.mergeSize = Math.min(iconLoader.width, iconLoader.height)
+                                dndItem.Drag.imageSource = root.Drag.imageSource
+                                dndItem.Drag.dragType = root.Drag.Automatic
+                                Qt.callLater(function() {
+                                    if (mouseArea.drag.active && dndItem.currentlyDraggedId === root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]) {
+                                        dndItem.Drag.active = true
                                     }
                                 })
                             }
-                        }
-                        drag.onActiveChanged: function() {
-                            if (drag.active) {
-                                if (typeof suppressAutoHide === "function") {
-                                    suppressAutoHide()
-                                } else {
-                                    LauncherController.cancelHide()
-                                }
-                                startProxyDragWhenReady()
-                            } else {
-                                root.proxyDragPending = false
-                                if (!dndItem.Drag.active
-                                        && dndItem.currentlyDraggedId === root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]) {
-                                    dndItem.currentlyDraggedId = ""
-                                    dndItem.currentlyDraggedIconName = ""
+
+                            onPressed: function (mouse) {
+                                if (mouse.button === Qt.LeftButton && root.dndEnabled) {
+                                    root.proxyDragPending = false
+                                    root.Drag.hotSpot = mapToItem(iconLoader, Qt.point(mouse.x, mouse.y))
+                                    const cacheKey = root.currentDragImageCacheKey()
+                                    if (root.dragImageReady
+                                            && root.dragImageCacheKey === cacheKey
+                                            && root.dragImageCacheUrl !== "") {
+                                        root.Drag.imageSource = root.dragImageCacheUrl
+                                        return
+                                    }
+
+                                    root.dragImageReady = false
+                                    root.Drag.imageSource = ""
+                                    iconLoader.grabToImage(function(result) {
+                                        root.Drag.imageSource = result.url
+                                        root.dragImageCacheKey = cacheKey
+                                        root.dragImageCacheUrl = result.url
+                                        root.dragImageReady = true
+                                        if (root.proxyDragPending || mouseArea.drag.active) {
+                                            mouseArea.startProxyDragWhenReady()
+                                        }
+                                    })
                                 }
                             }
-                        }
-                        onClicked: function(mouse) {
-                            if (mouse.button === Qt.LeftButton) {
-                                if (model.itemType === ItemArrangementProxyModel.FolderItemType) {
-                                    root.folderClicked()
+                            drag.onActiveChanged: function() {
+                                if (drag.active) {
+                                    if (typeof suppressAutoHide === "function") {
+                                        suppressAutoHide()
+                                    } else {
+                                        LauncherController.cancelHide()
+                                    }
+                                    startProxyDragWhenReady()
                                 } else {
-                                    root.itemClicked()
+                                    root.proxyDragPending = false
+                                    if (!dndItem.Drag.active
+                                            && dndItem.currentlyDraggedId === root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]) {
+                                        dndItem.currentlyDraggedId = ""
+                                        dndItem.currentlyDraggedIconName = ""
+                                    }
                                 }
-                            } else if (mouse.button === Qt.RightButton) {
-                                root.menuTriggered()
                             }
-                        }
-                        // touchscreen long press.
-                        onPressAndHold: function (mouse) {
-                            if (mouse.button === Qt.NoButton) {
-                                root.menuTriggered()
+                            onClicked: function(mouse) {
+                                if (mouse.button === Qt.LeftButton) {
+                                    if (model.itemType === ItemArrangementProxyModel.FolderItemType) {
+                                        root.folderClicked()
+                                    } else {
+                                        root.itemClicked()
+                                    }
+                                } else if (mouse.button === Qt.RightButton) {
+                                    root.menuTriggered()
+                                }
+                            }
+                            // touchscreen long press.
+                            onPressAndHold: function (mouse) {
+                                if (mouse.button === Qt.NoButton) {
+                                    root.menuTriggered()
+                                }
                             }
                         }
                     }
@@ -474,16 +493,16 @@ Control {
                                                 dndItem.mergeAnimStartX, dndItem.mergeAnimStartY)
                                             folderIcon.iconCenterX = localPos.x - folderIcon.width / 2
                                             folderIcon.iconCenterY = localPos.y - folderIcon.height / 2
-                                            folderIcon.introScale = (iconContainer.width / root.maxIconSizeInFolder) * root.iconScaleFactor
+                                            folderIcon.introScale = (iconItem.width / root.maxIconSizeInFolder) * root.iconScaleFactor
                                             folderIcon.visible = true
                                             iconIntroAnim.start()
                                         })
                                     } else if (dndItem.mergeAnimPending
                                         && modelData === dndItem.mergeAnimTargetIcon2) {
                                         Qt.callLater(function() {
-                                            folderIcon.iconCenterX = iconContainer.width / 2 - folderIcon.width / 2
-                                            folderIcon.iconCenterY = iconContainer.height / 2 - folderIcon.height / 2
-                                            folderIcon.introScale = (iconContainer.width / root.maxIconSizeInFolder) * root.iconScaleFactor
+                                            folderIcon.iconCenterX = iconItem.width / 2 - folderIcon.width / 2
+                                            folderIcon.iconCenterY = iconItem.height / 2 - folderIcon.height / 2
+                                            folderIcon.introScale = (iconItem.width / root.maxIconSizeInFolder) * root.iconScaleFactor
                                             iconIntroAnim.start()
                                         })
                                     }
@@ -514,7 +533,7 @@ Control {
                         anchors.fill: parent
                         name: iconSource
                         sourceSize: Qt.size(root.maxIconSize, root.maxIconSize)
-                        scale: (iconContainer.width / root.maxIconSize) * root.iconScaleFactor
+                        scale: (iconVisualItem.width / root.maxIconSize) * root.iconScaleFactor
                         palette: DTK.makeIconPalette(root.palette)
                         theme: ApplicationHelper.DarkType
                         fillMode: Image.PreserveAspectFit
@@ -525,7 +544,7 @@ Control {
             // as topMargin
             Item {
                 width: 1
-                height: isWindowedMode ? 4 : root.height / 10
+                height: Math.max(0, root.labelSpacerHeight - root.gridLabelGapReduction)
             }
 
             Label {
@@ -543,6 +562,7 @@ Control {
                 wrapMode: singleRow ? Text.NoWrap : Text.Wrap
                 elide: Text.ElideRight
                 maximumLineCount: singleRow ? 1 : 2
+                font: LauncherController.adjustFontWeight(root.displayFont, Font.Light)
             }
 
             TapHandler {

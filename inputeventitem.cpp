@@ -16,6 +16,29 @@
 
 namespace {
 Q_LOGGING_CATEGORY(logInputEvent, "org.deepin.dde.launchpad.input")
+
+bool isItemAncestorOf(QQuickItem *ancestor, QQuickItem *item)
+{
+    for (auto *current = item; current; current = current->parentItem()) {
+        if (current == ancestor)
+            return true;
+    }
+    return false;
+}
+
+bool isEditableTextItem(QQuickItem *item)
+{
+    if (!item || !item->isVisible() || !item->isEnabled())
+        return false;
+
+    const QVariant text = item->property("text");
+    const QVariant cursorPosition = item->property("cursorPosition");
+    if (!text.isValid() || !cursorPosition.isValid())
+        return false;
+
+    const QVariant readOnly = item->property("readOnly");
+    return !readOnly.isValid() || !readOnly.toBool();
+}
 }
 
 InputEventItem::InputEventItem()
@@ -82,7 +105,7 @@ bool InputEventItem::eventFilter(QObject *obj, QEvent *event) {
                 targetWindow = targetItem->window();
         }
 
-        if (targetWindow == window() && !m_inputMethodSource->hasActiveFocus()) {
+        if (targetWindow == window() && !m_inputMethodSource->hasActiveFocus() && !hasEditableFocus()) {
             auto *keyEvent = static_cast<QKeyEvent *>(event);
             const bool commandModifier = keyEvent->modifiers().testFlag(Qt::ControlModifier)
                 || keyEvent->modifiers().testFlag(Qt::AltModifier)
@@ -97,6 +120,9 @@ bool InputEventItem::eventFilter(QObject *obj, QEvent *event) {
     }
 
     if (event->type() == QEvent::InputMethod && (this->children().contains(obj) || obj == this)) {
+        if (hasEditableFocus())
+            return QObject::eventFilter(obj, event);
+
         QInputMethodEvent *inputMethodEvent = static_cast<QInputMethodEvent *>(event);
         qCDebug(logInputEvent) << "Input method event received:" << inputMethodEvent->commitString();
         if (!inputMethodEvent->commitString().isEmpty()) {
@@ -152,4 +178,19 @@ bool InputEventItem::handleMouseEvent(QEvent::Type type, const QPointF &position
         Q_EMIT pointerReleased(position, int(button), int(modifiers));
     }
     return false;
+}
+
+bool InputEventItem::hasEditableFocus() const
+{
+    if (!window())
+        return false;
+
+    QQuickItem *focusItem = window()->activeFocusItem();
+    if (!focusItem)
+        return false;
+
+    if (focusItem == this || focusItem == m_inputMethodSource || isItemAncestorOf(m_inputMethodSource, focusItem))
+        return false;
+
+    return isEditableTextItem(focusItem);
 }
