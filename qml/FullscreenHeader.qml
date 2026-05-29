@@ -119,7 +119,7 @@ Item {
         width: (root.indicatorBaseWidth + root.indicatorHitPadding * 2) * root.indicatorHoverScale
         height: (root.indicatorDotHeight + root.indicatorHitPadding * 2) * root.indicatorHoverScale
 
-        FrostedGlassBackground {
+        Rectangle {
             id: indicatorHoverBackground
             objectName: "fullscreenPageIndicatorHoverBackground"
             z: 0
@@ -131,13 +131,8 @@ Item {
             visible: opacity > 0
             opacity: indicatorMouseArea.containsMouse || indicatorMouseArea.pressed ? 1 : 0
             radius: height / 2
-            sourceItem: root.glassSourceItem
-            sampleRevision: root.glassSampleRevision
-            live: root.glassLive
-            effectEnabled: root.glassEffect
-            textureScale: 0.5
-            tintColor: Qt.rgba(1, 1, 1, indicatorMouseArea.pressed ? 0.14 : 0.08)
-            borderColor: Qt.rgba(1, 1, 1, 0.12)
+            color: Qt.rgba(1, 1, 1, 0.10)
+            antialiasing: true
 
             Behavior on scale {
                 NumberAnimation {

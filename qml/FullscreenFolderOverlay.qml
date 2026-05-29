@@ -50,6 +50,7 @@ FocusScope {
     readonly property bool animationRunning: openAnimation.running || closeAnimation.running
     property bool folderItemMoveEnabled: false
     property bool folderNameEditing: false
+    property int currentFolderPageCount: 0
     property var dndItem: null
     property var focusTarget: null
     property var launchAppFn: null
@@ -75,11 +76,34 @@ FocusScope {
     readonly property real iconBlurLayerOpacity: 0.5
     readonly property int sourcePreviewGridSize: 3
     readonly property int sourcePreviewMaxIcons: sourcePreviewGridSize * sourcePreviewGridSize
+    readonly property real pageButtonSize: 50
+    readonly property bool hasFolderPageButtons: currentFolderPageCount > 1
+        || (innerItem && innerItem.folderPageCount > 1)
+    readonly property real previousPageButtonTargetX: targetPanelX - pageButtonSize - 30
+    readonly property real nextPageButtonTargetX: targetPanelX + panelWidth + 30
 
     signal itemDropped(string dragId)
 
     function animationDuration(milliseconds) {
         return Math.max(1, Math.round(milliseconds * activeAnimationSpeedScale))
+    }
+
+    function refreshCurrentFolderPageCount() {
+        currentFolderPageCount = currentFolderId === -1
+            ? 0
+            : ItemArrangementProxyModel.pageCount(currentFolderId)
+    }
+
+    function decrementFolderPage() {
+        if (innerItem) {
+            innerItem.decrementFolderPage()
+        }
+    }
+
+    function incrementFolderPage() {
+        if (innerItem) {
+            innerItem.incrementFolderPage()
+        }
     }
 
     readonly property int openDuration: 178
@@ -249,6 +273,7 @@ FocusScope {
         externalDimProgress = 0
         contentRevealProgress = 0
         sourcePreviewOpacity = sourcePreviewCount() > 0 ? 1 : 0
+        refreshCurrentFolderPageCount()
         if (prepareContentBlurSourceFn) {
             prepareContentBlurSourceFn()
         }
@@ -321,12 +346,23 @@ FocusScope {
         pendingOpenSnapshotCount = 0
         folderItemMoveEnabled = false
         folderNameEditing = false
+        currentFolderPageCount = 0
         sourceIcons = []
         sourcePreviewIconRects = []
         sourceIconScaleFactor = 1.0
     }
 
     Keys.onEscapePressed: close()
+
+    Connections {
+        target: ItemArrangementProxyModel
+
+        function onFolderPageCountChanged(folderId) {
+            if (folderId === root.currentFolderId) {
+                root.refreshCurrentFolderPageCount()
+            }
+        }
+    }
 
     Image {
         id: backgroundSnapshotImage
@@ -981,8 +1017,53 @@ FocusScope {
             anchors.fill: parent
 
             sourceComponent: Item {
+                id: folderContentItem
+
                 anchors.fill: parent
                 opacity: root.contentRevealProgress
+
+                readonly property int folderPageCount: folderPagesView.count
+
+                function decrementFolderPage() {
+                    if (folderPagesView.count <= 1 || folderPagesView.currentIndex <= 0) {
+                        return
+                    }
+                    folderPagesView.setCurrentIndex(folderPagesView.currentIndex - 1)
+                }
+
+                function incrementFolderPage() {
+                    if (folderPagesView.count <= 1 || folderPagesView.currentIndex >= folderPagesView.count - 1) {
+                        return
+                    }
+                    folderPagesView.setCurrentIndex(folderPagesView.currentIndex + 1)
+                }
+
+                function handleFolderWheel(wheel) {
+                    wheel.accepted = true
+
+                    if (folderWheelPageDelay.running || folderPagesView.count <= 1) {
+                        return
+                    }
+
+                    wheelFocusSink.forceActiveFocus()
+                    const xDelta = wheel.angleDelta.x / 8
+                    const yDelta = wheel.angleDelta.y / 8
+                    let toPage = 0
+
+                    if (yDelta !== 0) {
+                        toPage = yDelta > 0 ? -1 : 1
+                    } else if (xDelta !== 0) {
+                        toPage = xDelta > 0 ? 1 : -1
+                    }
+
+                    if (toPage < 0) {
+                        folderWheelPageDelay.start()
+                        decrementFolderPage()
+                    } else if (toPage > 0) {
+                        folderWheelPageDelay.start()
+                        incrementFolderPage()
+                    }
+                }
 
                 DropArea {
                     anchors.fill: parent
@@ -1089,6 +1170,12 @@ FocusScope {
                             height: 0
                         }
 
+                        Timer {
+                            id: folderWheelPageDelay
+                            interval: 400
+                            repeat: false
+                        }
+
                         DropArea {
                             id: folderPageDropArea
                             property int pageIntent: 0
@@ -1165,27 +1252,9 @@ FocusScope {
                             }
                         }
 
-                        MouseArea {
-                            anchors.fill: parent
-                            scrollGestureEnabled: false
-
+                        WheelHandler {
                             onWheel: function(wheel) {
-                                wheelFocusSink.forceActiveFocus()
-                                const xDelta = wheel.angleDelta.x / 8
-                                const yDelta = wheel.angleDelta.y / 8
-                                let toPage = 0
-
-                                if (yDelta !== 0) {
-                                    toPage = yDelta > 0 ? -1 : 1
-                                } else if (xDelta !== 0) {
-                                    toPage = xDelta > 0 ? 1 : -1
-                                }
-
-                                if (toPage < 0) {
-                                    decrementPageIndex(folderPagesView)
-                                } else if (toPage > 0) {
-                                    incrementPageIndex(folderPagesView)
-                                }
+                                folderContentItem.handleFolderWheel(wheel)
                             }
                         }
 
@@ -1587,7 +1656,9 @@ FocusScope {
                         }
                     }
                 }
+
             }
         }
     }
+
 }

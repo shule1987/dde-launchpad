@@ -385,6 +385,10 @@ InputEventItem {
         }
     }
 
+    function interpolatePosition(from, to, progress) {
+        return from + (to - from) * progress
+    }
+
     readonly property bool isHorizontalDock: DesktopIntegration.dockPosition === Qt.UpArrow
                                             || DesktopIntegration.dockPosition === Qt.DownArrow
     readonly property real dockReserve: (
@@ -965,132 +969,6 @@ InputEventItem {
                                     glassEffect: root.glassEffectEnabled
                                 }
 
-                                ToolButton {
-                                    id: previousPageButton
-                                    readonly property var targetPageView: footer.searchEdit.text !== ""
-                                        ? contentView.searchPageView
-                                        : contentView.pageView
-                                    anchors.left: parent.left
-                                    anchors.leftMargin: 30
-                                    y: Math.round((root.height - height) / 2)
-                                    z: 10
-                                    width: 50
-                                    height: 50
-                                    hoverEnabled: true
-                                    visible: targetPageView
-                                             && targetPageView.count > 1
-                                             && !folderGridViewPopup.visible
-                                    enabled: visible
-                                    display: AbstractButton.IconOnly
-                                    icon.name: "go-previous"
-                                    icon.width: 20
-                                    icon.height: 20
-                                    icon.color: "#FFFFFFFF"
-                                    contentItem: Item {
-                                        anchors.fill: parent
-
-                                        Canvas {
-                                            anchors.centerIn: parent
-                                            width: 20
-                                            height: 20
-                                            onPaint: {
-                                                const ctx = getContext("2d")
-                                                ctx.clearRect(0, 0, width, height)
-                                                ctx.strokeStyle = "#FFFFFFFF"
-                                                ctx.lineWidth = 2.2
-                                                ctx.lineCap = "round"
-                                                ctx.lineJoin = "round"
-                                                ctx.beginPath()
-                                                ctx.moveTo(12.5, 5)
-                                                ctx.lineTo(7.5, 10)
-                                                ctx.lineTo(12.5, 15)
-                                                ctx.stroke()
-                                            }
-                                        }
-                                    }
-                                    background: FrostedGlassBackground {
-                                        radius: 25
-                                        sourceItem: glassControlsSampleSource
-                                        sampleRevision: root.glassSampleRevision
-                                        live: root.glassLiveEnabled
-                                        effectEnabled: root.glassEffectEnabled
-                                        textureScale: root.glassSampleTextureScale
-                                        brightness: previousPageButton.down ? -0.1 : previousPageButton.hovered ? 0.2 : 0.0
-                                        tintColor: Qt.rgba(1, 1, 1, previousPageButton.down ? 0.16 : previousPageButton.hovered ? 0.12 : 0.08)
-                                        borderColor: Qt.rgba(1, 1, 1, 0.12)
-                                    }
-                                    onClicked: {
-                                        if (!targetPageView) {
-                                            return
-                                        }
-                                        targetPageView.changedByNonKeyboard = true
-                                        decrementPageIndex(targetPageView)
-                                    }
-                                }
-
-                                ToolButton {
-                                    id: nextPageButton
-                                    readonly property var targetPageView: footer.searchEdit.text !== ""
-                                        ? contentView.searchPageView
-                                        : contentView.pageView
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: 30
-                                    y: Math.round((root.height - height) / 2)
-                                    z: 10
-                                    width: 50
-                                    height: 50
-                                    hoverEnabled: true
-                                    visible: targetPageView
-                                             && targetPageView.count > 1
-                                             && !folderGridViewPopup.visible
-                                    enabled: visible
-                                    display: AbstractButton.IconOnly
-                                    icon.name: "go-next"
-                                    icon.width: 20
-                                    icon.height: 20
-                                    icon.color: "#FFFFFFFF"
-                                    contentItem: Item {
-                                        anchors.fill: parent
-
-                                        Canvas {
-                                            anchors.centerIn: parent
-                                            width: 20
-                                            height: 20
-                                            onPaint: {
-                                                const ctx = getContext("2d")
-                                                ctx.clearRect(0, 0, width, height)
-                                                ctx.strokeStyle = "#FFFFFFFF"
-                                                ctx.lineWidth = 2.2
-                                                ctx.lineCap = "round"
-                                                ctx.lineJoin = "round"
-                                                ctx.beginPath()
-                                                ctx.moveTo(7.5, 5)
-                                                ctx.lineTo(12.5, 10)
-                                                ctx.lineTo(7.5, 15)
-                                                ctx.stroke()
-                                            }
-                                        }
-                                    }
-                                    background: FrostedGlassBackground {
-                                        radius: 25
-                                        sourceItem: glassControlsSampleSource
-                                        sampleRevision: root.glassSampleRevision
-                                        live: root.glassLiveEnabled
-                                        effectEnabled: root.glassEffectEnabled
-                                        textureScale: root.glassSampleTextureScale
-                                        brightness: nextPageButton.down ? -0.1 : nextPageButton.hovered ? 0.2 : 0.0
-                                        tintColor: Qt.rgba(1, 1, 1, nextPageButton.down ? 0.16 : nextPageButton.hovered ? 0.12 : 0.08)
-                                        borderColor: Qt.rgba(1, 1, 1, 0.12)
-                                    }
-                                    onClicked: {
-                                        if (!targetPageView) {
-                                            return
-                                        }
-                                        targetPageView.changedByNonKeyboard = true
-                                        incrementPageIndex(targetPageView)
-                                    }
-                                }
-
                                 Item {
                                     id: footerBlankClickLayer
                                     anchors.fill: parent
@@ -1180,6 +1058,168 @@ InputEventItem {
             }
             folderNameFont: LauncherController.adjustFontWeight(DTK.fontManager.t6, Font.Bold)
             endPoint: Qt.point(width / 2, height / 2)
+        }
+
+        ToolButton {
+            id: previousPageButton
+            readonly property var targetPageView: footer.searchEdit.text !== ""
+                ? contentView.searchPageView
+                : contentView.pageView
+            readonly property bool folderPagingActive: folderGridViewPopup.visible
+                && folderGridViewPopup.hasFolderPageButtons
+            readonly property real defaultX: 30
+            readonly property real folderTargetX: folderGridViewPopup.previousPageButtonTargetX
+            readonly property real moveProgress: folderGridViewPopup.visible
+                ? Math.max(0, Math.min(1, folderGridViewPopup.backgroundMorphProgress))
+                : 0
+            readonly property real glassPositionRevision: x + y
+
+            x: Math.round(root.interpolatePosition(defaultX,
+                                                   folderTargetX,
+                                                   moveProgress))
+            y: Math.round((parent.height - height) / 2)
+            z: folderGridViewPopup.visible ? 110 : 10
+            width: 50
+            height: 50
+            hoverEnabled: true
+            visible: folderPagingActive
+                     || (targetPageView
+                         && targetPageView.count > 1
+                         && !folderGridViewPopup.visible)
+            enabled: visible
+                     && (!folderPagingActive
+                         || (folderGridViewPopup.contentRevealProgress > 0.98
+                             && folderGridViewPopup.innerItem))
+            display: AbstractButton.IconOnly
+            icon.name: "go-previous"
+            icon.width: 20
+            icon.height: 20
+            icon.color: "#FFFFFFFF"
+            contentItem: Item {
+                anchors.fill: parent
+
+                Canvas {
+                    anchors.centerIn: parent
+                    width: 20
+                    height: 20
+                    onPaint: {
+                        const ctx = getContext("2d")
+                        ctx.clearRect(0, 0, width, height)
+                        ctx.strokeStyle = "#FFFFFFFF"
+                        ctx.lineWidth = 2.2
+                        ctx.lineCap = "round"
+                        ctx.lineJoin = "round"
+                        ctx.beginPath()
+                        ctx.moveTo(12.5, 5)
+                        ctx.lineTo(7.5, 10)
+                        ctx.lineTo(12.5, 15)
+                        ctx.stroke()
+                    }
+                }
+            }
+            background: FrostedGlassBackground {
+                radius: 25
+                sourceItem: glassControlsSampleSource
+                sampleRevision: root.glassSampleRevision + previousPageButton.glassPositionRevision
+                live: root.glassLiveEnabled
+                effectEnabled: root.glassEffectEnabled
+                textureScale: root.glassSampleTextureScale
+                brightness: previousPageButton.down ? -0.1 : previousPageButton.hovered ? 0.2 : 0.0
+                tintColor: Qt.rgba(1, 1, 1, previousPageButton.down ? 0.16 : previousPageButton.hovered ? 0.12 : 0.08)
+                borderColor: Qt.rgba(1, 1, 1, 0.12)
+            }
+            onClicked: {
+                if (folderPagingActive) {
+                    folderGridViewPopup.decrementFolderPage()
+                    return
+                }
+                if (!targetPageView) {
+                    return
+                }
+                targetPageView.changedByNonKeyboard = true
+                decrementPageIndex(targetPageView)
+            }
+        }
+
+        ToolButton {
+            id: nextPageButton
+            readonly property var targetPageView: footer.searchEdit.text !== ""
+                ? contentView.searchPageView
+                : contentView.pageView
+            readonly property bool folderPagingActive: folderGridViewPopup.visible
+                && folderGridViewPopup.hasFolderPageButtons
+            readonly property real defaultX: parent.width - width - 30
+            readonly property real folderTargetX: folderGridViewPopup.nextPageButtonTargetX
+            readonly property real moveProgress: folderGridViewPopup.visible
+                ? Math.max(0, Math.min(1, folderGridViewPopup.backgroundMorphProgress))
+                : 0
+            readonly property real glassPositionRevision: x + y
+
+            x: Math.round(root.interpolatePosition(defaultX,
+                                                   folderTargetX,
+                                                   moveProgress))
+            y: Math.round((parent.height - height) / 2)
+            z: folderGridViewPopup.visible ? 110 : 10
+            width: 50
+            height: 50
+            hoverEnabled: true
+            visible: folderPagingActive
+                     || (targetPageView
+                         && targetPageView.count > 1
+                         && !folderGridViewPopup.visible)
+            enabled: visible
+                     && (!folderPagingActive
+                         || (folderGridViewPopup.contentRevealProgress > 0.98
+                             && folderGridViewPopup.innerItem))
+            display: AbstractButton.IconOnly
+            icon.name: "go-next"
+            icon.width: 20
+            icon.height: 20
+            icon.color: "#FFFFFFFF"
+            contentItem: Item {
+                anchors.fill: parent
+
+                Canvas {
+                    anchors.centerIn: parent
+                    width: 20
+                    height: 20
+                    onPaint: {
+                        const ctx = getContext("2d")
+                        ctx.clearRect(0, 0, width, height)
+                        ctx.strokeStyle = "#FFFFFFFF"
+                        ctx.lineWidth = 2.2
+                        ctx.lineCap = "round"
+                        ctx.lineJoin = "round"
+                        ctx.beginPath()
+                        ctx.moveTo(7.5, 5)
+                        ctx.lineTo(12.5, 10)
+                        ctx.lineTo(7.5, 15)
+                        ctx.stroke()
+                    }
+                }
+            }
+            background: FrostedGlassBackground {
+                radius: 25
+                sourceItem: glassControlsSampleSource
+                sampleRevision: root.glassSampleRevision + nextPageButton.glassPositionRevision
+                live: root.glassLiveEnabled
+                effectEnabled: root.glassEffectEnabled
+                textureScale: root.glassSampleTextureScale
+                brightness: nextPageButton.down ? -0.1 : nextPageButton.hovered ? 0.2 : 0.0
+                tintColor: Qt.rgba(1, 1, 1, nextPageButton.down ? 0.16 : nextPageButton.hovered ? 0.12 : 0.08)
+                borderColor: Qt.rgba(1, 1, 1, 0.12)
+            }
+            onClicked: {
+                if (folderPagingActive) {
+                    folderGridViewPopup.incrementFolderPage()
+                    return
+                }
+                if (!targetPageView) {
+                    return
+                }
+                targetPageView.changedByNonKeyboard = true
+                incrementPageIndex(targetPageView)
+            }
         }
 
         Item {

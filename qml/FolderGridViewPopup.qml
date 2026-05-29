@@ -67,7 +67,7 @@ Popup {
     // 获取当前屏幕的 DPR，用于物理像素对齐
     property real dpr: Screen.devicePixelRatio
 
-    function animationDuration(milliseconds) {
+    function scaledDuration(milliseconds) {
         return Math.max(1, Math.round(milliseconds * LauncherController.animationSpeedScale))
     }
 
@@ -93,7 +93,7 @@ Popup {
 
     Timer {
         id: folderItemMoveEnableTimer
-        interval: root.animationDuration(80)
+        interval: root.scaledDuration(80)
         repeat: false
         onTriggered: root.folderItemMoveEnabled = root.visible
     }
@@ -214,11 +214,57 @@ Popup {
                     Layout.fillHeight: true
                     color: "transparent"
 
+                    function decrementFolderPage() {
+                        if (folderPagesView.count <= 1 || folderPagesView.currentIndex <= 0) {
+                            return
+                        }
+                        folderPagesView.setCurrentIndex(folderPagesView.currentIndex - 1)
+                    }
+
+                    function incrementFolderPage() {
+                        if (folderPagesView.count <= 1 || folderPagesView.currentIndex >= folderPagesView.count - 1) {
+                            return
+                        }
+                        folderPagesView.setCurrentIndex(folderPagesView.currentIndex + 1)
+                    }
+
+                    function handleFolderWheel(wheel) {
+                        wheel.accepted = true
+
+                        if (folderWheelPageDelay.running || folderPagesView.count <= 1) {
+                            return
+                        }
+
+                        // 鼠标滚轮翻页时将焦点转移到 wheelFocusSink，使 GridView 失去 activeFocus
+                        wheelFocusSink.forceActiveFocus()
+                        let xDelta = wheel.angleDelta.x / 8
+                        let yDelta = wheel.angleDelta.y / 8
+                        let toPage = 0; // -1 prev, +1 next, 0 don't change
+                        if (yDelta !== 0) {
+                            toPage = (yDelta > 0) ? -1 : 1
+                        } else if (xDelta !== 0) {
+                            toPage = (xDelta > 0) ? 1 : -1
+                        }
+                        if (toPage < 0) {
+                            folderWheelPageDelay.start()
+                            decrementFolderPage()
+                        } else if (toPage > 0) {
+                            folderWheelPageDelay.start()
+                            incrementFolderPage()
+                        }
+                    }
+
                     // 用于鼠标滚轮滚动时接收焦点，使 GridView 失去 activeFocus
                     Item {
                         id: wheelFocusSink
                         width: 0
                         height: 0
+                    }
+
+                    Timer {
+                        id: folderWheelPageDelay
+                        interval: 400
+                        repeat: false
                     }
 
                     DropArea {
@@ -296,27 +342,9 @@ Popup {
                         }
                     }
 
-                    MouseArea {
-                        anchors.fill: parent
-                        scrollGestureEnabled: false
-
-                        // TODO: this might not be the correct way to handle wheel
-                        onWheel: function (wheel) {
-                            // 鼠标滚轮翻页时将焦点转移到 wheelFocusSink，使 GridView 失去 activeFocus
-                            wheelFocusSink.forceActiveFocus()
-                            let xDelta = wheel.angleDelta.x / 8
-                            let yDelta = wheel.angleDelta.y / 8
-                            let toPage = 0; // -1 prev, +1 next, 0 don't change
-                            if (yDelta !== 0) {
-                                toPage = (yDelta > 0) ? -1 : 1
-                            } else if (xDelta !== 0) {
-                                toPage = (xDelta > 0) ? 1 : -1
-                            }
-                            if (toPage < 0) {
-                                decrementPageIndex(folderPagesView)
-                            } else if (toPage > 0) {
-                                incrementPageIndex(folderPagesView)
-                            }
+                    WheelHandler {
+                        onWheel: function(wheel) {
+                            parent.handleFolderWheel(wheel)
                         }
                     }
 
@@ -423,7 +451,7 @@ Popup {
                                         property Transition itemMove: Transition {
                                             NumberAnimation {
                                                 properties: "x,y"
-                                                duration: root.animationDuration(200)
+                                                duration: root.scaledDuration(200)
                                                 easing.type: Easing.OutQuad
                                             }
                                         }
@@ -747,7 +775,7 @@ Popup {
 
                         radius: width / 2
                         color: Qt.rgba(255, 255, 255, index === folderPageIndicator.currentIndex ? 0.9 : pressed ? 0.5 : 0.2)
-                        Behavior on opacity { OpacityAnimator { duration: root.animationDuration(100) } }
+                        Behavior on opacity { OpacityAnimator { duration: root.scaledDuration(100) } }
                         OutsideBoxBorder {
                             anchors.fill: parent
                             radius: parent.radius
