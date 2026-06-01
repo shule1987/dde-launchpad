@@ -248,8 +248,10 @@ FocusScope {
             readonly property int gridRing: Math.floor(Math.max(Math.abs(gridColumn - 3), Math.abs(gridRow - 1.5)))
             readonly property int maxGridRing: 3
             readonly property real gatherStrength: 0.22
-            readonly property real gatherOffsetX: (gridViewContainer.width / 2 - (x + width / 2)) * gatherStrength
-            readonly property real gatherOffsetY: (gridViewContainer.height / 2 - (y + height / 2)) * gatherStrength
+            readonly property real gridCellCenterX: (gridColumn + 0.5) * gridViewContainer.cellWidth
+            readonly property real gridCellCenterY: (gridRow + 0.5) * gridViewContainer.cellHeight
+            readonly property real gatherOffsetX: (gridViewContainer.width / 2 - gridCellCenterX) * gatherStrength
+            readonly property real gatherOffsetY: (gridViewContainer.height / 2 - gridCellCenterY) * gatherStrength
             readonly property real devicePixelRatio: Screen.devicePixelRatio ? Screen.devicePixelRatio : 1
             property bool gridMotionHidingSnapshot: false
             property int gridMotionSpeedScaleSnapshot: 1
