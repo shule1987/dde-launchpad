@@ -17,4 +17,24 @@ QtObject {
         DndJoin = 0,
         DndAppend = 1
     }
+
+    signal folderPageCountChanged(int folderId)
+    signal folderRemoved(int folderId)
+
+    function folderEntriesForItem(id) {
+        return []
+    }
+
+    function addItemToFolder(id, folderId) {
+        return true
+    }
+
+    function addItemToNewFolder(id) {
+        return true
+    }
+
+    function dissolveFolder(folderId) {
+        folderRemoved(folderId)
+        return true
+    }
 }

@@ -17,6 +17,10 @@ Item {
     property bool hideFavoriteMenu
     property bool hideMoveToTopMenu
     property bool hideDisplayScalingMenu
+    property var getCategoryNameFn: null
+    property var openFolderFn: null
+    property var renameFolderFn: null
+    property var dissolveFolderFn: null
     readonly property bool isFullscreen: LauncherController.currentFrame === "FullscreenFrame"
     readonly property bool isHorizontalDock: DesktopIntegration.dockPosition === Qt.UpArrow || DesktopIntegration.dockPosition === Qt.DownArrow
     readonly property int dockSpacing: (isHorizontalDock ? DesktopIntegration.dockGeometry.height : DesktopIntegration.dockGeometry.width) / Screen.devicePixelRatio
@@ -94,12 +98,28 @@ Item {
     function menuItems() {
         const isFolder = root.desktopId.startsWith("internal/folders/")
         const isInternal = root.desktopId.startsWith("internal/")
+        if (isFolder) {
+            return [
+                { command: "open", text: qsTr("Open") },
+                { command: "renameFolder", text: qsTr("Rename") },
+                { separator: true },
+                { command: "dissolveFolder", text: qsTr("Dissolve") }
+            ]
+        }
+
         const pinToTopVisible = isFavoriteItem && !hideFavoriteMenu
         const favoriteVisible = !hideFavoriteMenu
         const displayScalingVisible = !hideDisplayScalingMenu
+        const addToItems = addToMenuItems()
 
         return [
-            { command: "open", text: qsTr("Open"), enabled: !isFolder },
+            { command: "open", text: qsTr("Open") },
+            {
+                text: qsTr("Add to"),
+                visible: !isInternal,
+                enabled: addToItems.length > 0,
+                items: addToItems
+            },
             { separator: true },
             { command: "pinToTop", text: qsTr("Pin to Top"), visible: pinToTopVisible, enabled: false },
             { command: "moveToTop", text: qsTr("Move to Top"), visible: !hideMoveToTopMenu, enabled: !hideMoveToTopMenu },
@@ -143,10 +163,69 @@ Item {
         ]
     }
 
+    function folderDisplayName(display) {
+        if (display && display.startsWith("internal/category/") && root.getCategoryNameFn) {
+            return root.getCategoryNameFn(display.substring(18))
+        }
+
+        return display && display !== "" ? display : qsTr("Folder")
+    }
+
+    function addToMenuItems() {
+        const result = []
+        const folders = ItemArrangementProxyModel.folderEntriesForItem(root.desktopId)
+        for (let i = 0; i < folders.length; ++i) {
+            result.push({
+                command: "addToFolder:" + folders[i].desktopId,
+                text: folderDisplayName(folders[i].display)
+            })
+        }
+
+        if (result.length > 0) {
+            result.push({ separator: true })
+        }
+        result.push({ command: "addToNewFolder", text: qsTr("New Folder") })
+        return result
+    }
+
+    function folderIdNumber() {
+        if (!root.desktopId.startsWith("internal/folders/")) {
+            return -1
+        }
+
+        return Number(root.desktopId.replace("internal/folders/", ""))
+    }
+
     function handleCommand(command) {
+        if (command.startsWith("addToFolder:")) {
+            ItemArrangementProxyModel.addItemToFolder(root.desktopId, command.substring("addToFolder:".length))
+            return
+        }
+
         switch (command) {
         case "open":
-            launchApp(root.desktopId)
+            if (root.desktopId.startsWith("internal/folders/")) {
+                if (root.openFolderFn) {
+                    root.openFolderFn()
+                }
+            } else {
+                launchApp(root.desktopId)
+            }
+            break
+        case "renameFolder":
+            if (root.renameFolderFn) {
+                root.renameFolderFn()
+            }
+            break
+        case "dissolveFolder":
+            if (root.dissolveFolderFn) {
+                root.dissolveFolderFn()
+            } else {
+                ItemArrangementProxyModel.dissolveFolder(folderIdNumber())
+            }
+            break
+        case "addToNewFolder":
+            ItemArrangementProxyModel.addItemToNewFolder(root.desktopId)
             break
         case "pinToTop":
             FavoritedProxyModel.pinToTop(root.desktopId)

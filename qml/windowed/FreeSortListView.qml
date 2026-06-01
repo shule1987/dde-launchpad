@@ -208,6 +208,30 @@ Item {
                 }
             }
 
+            function contextMenuProps() {
+                const props = {
+                    hideMoveToTopMenu: index === 0
+                }
+
+                if (itemType === ItemArrangementProxyModel.FolderItemType) {
+                    props.openFolderFn = function() {
+                        launchItem()
+                    }
+                    props.renameFolderFn = function() {
+                        launchItem()
+                        if (typeof folderGridViewPopup.requestFolderNameEdit === "function") {
+                            folderGridViewPopup.requestFolderNameEdit()
+                        }
+                    }
+                    props.dissolveFolderFn = function() {
+                        let folderId = Number(model.desktopId.replace("internal/folders/", ""))
+                        ItemArrangementProxyModel.dissolveFolder(folderId)
+                    }
+                }
+
+                return props
+            }
+
             onPositionChanged: function(drag) {
                 let dragId = Helper.dragDesktopId(drag)
                 if (dragId === desktopId) {
@@ -342,9 +366,7 @@ Item {
 
                     onClicked: function (mouse) {
                         if (mouse.button === Qt.RightButton) {
-                            showContextMenu(itemDelegate, model, {
-                                hideMoveToTopMenu: index === 0
-                            })
+                            showContextMenu(itemDelegate, model, contextMenuProps())
                             baseLayer.focus = true
                         } else {
                             launchItem()
@@ -354,9 +376,7 @@ Item {
                     // touchscreen long press.
                     onPressAndHold: function (mouse) {
                         if (mouse.button === Qt.NoButton) {
-                            showContextMenu(itemDelegate, model, {
-                                hideMoveToTopMenu: index === 0
-                            })
+                            showContextMenu(itemDelegate, model, contextMenuProps())
                             baseLayer.focus = true
                         }
                     }

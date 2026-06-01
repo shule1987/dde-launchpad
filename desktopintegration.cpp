@@ -39,6 +39,46 @@ DWIDGET_USE_NAMESPACE
 
 namespace {
 Q_LOGGING_CATEGORY(logDesktopIntegration, "org.deepin.dde.launchpad.desktop")
+
+void appendStandardContextMenuItems(QMenu *menu, const QVariantList &items)
+{
+    for (const QVariant &item : items) {
+        const QVariantMap itemMap = item.toMap();
+        if (!itemMap.value(QStringLiteral("visible"), true).toBool()) {
+            continue;
+        }
+
+        if (itemMap.value(QStringLiteral("separator")).toBool()) {
+            menu->addSeparator();
+            continue;
+        }
+
+        const QString text = itemMap.value(QStringLiteral("text")).toString();
+        const QVariantList childItems = itemMap.value(QStringLiteral("items")).toList();
+        if (!childItems.isEmpty()) {
+            auto *subMenu = new DMenu(menu);
+            subMenu->setTitle(text);
+            appendStandardContextMenuItems(subMenu, childItems);
+            if (subMenu->actions().isEmpty()) {
+                delete subMenu;
+                continue;
+            }
+
+            QAction *menuAction = menu->addMenu(subMenu);
+            menuAction->setEnabled(itemMap.value(QStringLiteral("enabled"), true).toBool());
+            continue;
+        }
+
+        QAction *action = menu->addAction(text);
+        action->setData(itemMap.value(QStringLiteral("command")).toString());
+        action->setEnabled(itemMap.value(QStringLiteral("enabled"), true).toBool());
+
+        if (itemMap.value(QStringLiteral("checkable")).toBool()) {
+            action->setCheckable(true);
+            action->setChecked(itemMap.value(QStringLiteral("checked")).toBool());
+        }
+    }
+}
 }
 
 QString DesktopIntegration::currentDE()
@@ -298,27 +338,7 @@ QString DesktopIntegration::popupStandardContextMenu(const QVariantList &items, 
 {
     DMenu menu;
     m_contextMenu = &menu;
-
-    for (const QVariant &item : items) {
-        const QVariantMap itemMap = item.toMap();
-        if (!itemMap.value(QStringLiteral("visible"), true).toBool()) {
-            continue;
-        }
-
-        if (itemMap.value(QStringLiteral("separator")).toBool()) {
-            menu.addSeparator();
-            continue;
-        }
-
-        QAction *action = menu.addAction(itemMap.value(QStringLiteral("text")).toString());
-        action->setData(itemMap.value(QStringLiteral("command")).toString());
-        action->setEnabled(itemMap.value(QStringLiteral("enabled"), true).toBool());
-
-        if (itemMap.value(QStringLiteral("checkable")).toBool()) {
-            action->setCheckable(true);
-            action->setChecked(itemMap.value(QStringLiteral("checked")).toBool());
-        }
-    }
+    appendStandardContextMenuItems(&menu, items);
 
     if (menu.actions().isEmpty()) {
         m_contextMenu.clear();

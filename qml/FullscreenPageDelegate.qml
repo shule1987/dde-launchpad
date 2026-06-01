@@ -369,6 +369,43 @@ FocusScope {
                 return true
             }
 
+            function openFolderFromDelegate(delegateItem) {
+                const folderId = Number(model.desktopId.replace("internal/folders/", ""))
+                const folderRect = delegateItem.folderBackgroundRect(root.mapTarget)
+                root.folderGridViewPopup.currentFolderId = folderId
+                root.folderGridViewPopup.sourceRectX = folderRect.x
+                root.folderGridViewPopup.sourceRectY = folderRect.y
+                root.folderGridViewPopup.sourceRectWidth = folderRect.width
+                root.folderGridViewPopup.sourceRectHeight = folderRect.height
+                root.folderGridViewPopup.sourceCornerRadius = delegateItem.folderBackgroundRadius
+                root.folderGridViewPopup.sourceIconScaleFactor = root.iconScaleFactor
+                root.folderGridViewPopup.sourceIcons = delegateItem.folderPreviewIcons()
+                const sourcePreviewIconRects = []
+                const sourcePreviewCount = root.folderGridViewPopup.sourceIcons.length
+                for (let i = 0; i < sourcePreviewCount; ++i) {
+                    sourcePreviewIconRects.push(delegateItem.folderPreviewIconVisualRect(i, root.mapTarget))
+                }
+                root.folderGridViewPopup.sourcePreviewIconRects = sourcePreviewIconRects
+                root.folderGridViewPopup.startPointX = folderRect.x + folderRect.width / 2
+                root.folderGridViewPopup.startPointY = folderRect.y + folderRect.height / 2
+                root.folderGridViewPopup.open()
+                root.folderGridViewPopup.folderName = model.display.startsWith("internal/category/")
+                                                ? root.getCategoryNameFn(model.display.substring(18))
+                                                : model.display
+            }
+
+            function renameFolderFromDelegate(delegateItem) {
+                openFolderFromDelegate(delegateItem)
+                if (typeof root.folderGridViewPopup.requestFolderNameEdit === "function") {
+                    root.folderGridViewPopup.requestFolderNameEdit()
+                }
+            }
+
+            function dissolveFolderFromDelegate() {
+                const folderId = Number(model.desktopId.replace("internal/folders/", ""))
+                ItemArrangementProxyModel.dissolveFolder(folderId)
+            }
+
             onEntered: function(drag) {
                 if (root.folderGridViewPopup.opened) {
                     root.folderGridViewPopup.close()
@@ -436,36 +473,24 @@ FocusScope {
                     onItemClicked: root.launchAppFn(desktopId)
 
                     onFolderClicked: {
-                        const folderId = Number(model.desktopId.replace("internal/folders/", ""))
-                        const folderRect = iconItemDelegate.folderBackgroundRect(root.mapTarget)
-                        root.folderGridViewPopup.currentFolderId = folderId
-                        root.folderGridViewPopup.sourceRectX = folderRect.x
-                        root.folderGridViewPopup.sourceRectY = folderRect.y
-                        root.folderGridViewPopup.sourceRectWidth = folderRect.width
-                        root.folderGridViewPopup.sourceRectHeight = folderRect.height
-                        root.folderGridViewPopup.sourceCornerRadius = iconItemDelegate.folderBackgroundRadius
-                        root.folderGridViewPopup.sourceIconScaleFactor = root.iconScaleFactor
-                        root.folderGridViewPopup.sourceIcons = iconItemDelegate.folderPreviewIcons()
-                        const sourcePreviewIconRects = []
-                        const sourcePreviewCount = root.folderGridViewPopup.sourceIcons.length
-                        for (let i = 0; i < sourcePreviewCount; ++i) {
-                            sourcePreviewIconRects.push(iconItemDelegate.folderPreviewIconVisualRect(i, root.mapTarget))
-                        }
-                        root.folderGridViewPopup.sourcePreviewIconRects = sourcePreviewIconRects
-                        root.folderGridViewPopup.startPointX = folderRect.x + folderRect.width / 2
-                        root.folderGridViewPopup.startPointY = folderRect.y + folderRect.height / 2
-                        root.folderGridViewPopup.open()
-                        root.folderGridViewPopup.folderName = model.display.startsWith("internal/category/")
-                                                        ? root.getCategoryNameFn(model.display.substring(18))
-                                                        : model.display
+                        delegateRoot.openFolderFromDelegate(iconItemDelegate)
                     }
 
                     onMenuTriggered: {
-                        if (folderIcons) {
-                            return
+                        const additionalProps = {}
+                        if (model.itemType === ItemArrangementProxyModel.FolderItemType) {
+                            additionalProps.openFolderFn = function() {
+                                delegateRoot.openFolderFromDelegate(iconItemDelegate)
+                            }
+                            additionalProps.renameFolderFn = function() {
+                                delegateRoot.renameFolderFromDelegate(iconItemDelegate)
+                            }
+                            additionalProps.dissolveFolderFn = function() {
+                                delegateRoot.dissolveFolderFromDelegate()
+                            }
                         }
 
-                        root.showContextMenuFn(iconItemDelegate, model)
+                        root.showContextMenuFn(iconItemDelegate, model, additionalProps)
                         root.pageView.focus = true
                     }
                 }

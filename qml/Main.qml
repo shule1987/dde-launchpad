@@ -76,7 +76,8 @@ QtObject {
                 isFavoriteItem: false,
                 hideFavoriteMenu: true,
                 hideDisplayScalingMenu: false,
-                hideMoveToTopMenu: true
+                hideMoveToTopMenu: true,
+                getCategoryNameFn: function(section) { return getCategoryName(section) }
             }, additionalProps));
             menu.closed.connect(menu.destroy)
             menu.popup();
@@ -501,7 +502,7 @@ QtObject {
                 focus: true
                 sourceComponent: FullscreenFrame {
                     launchAppFn: function(desktopId) { launchApp(desktopId) }
-                    showContextMenuFn: function(item, model) { showContextMenu(item, model) }
+                    showContextMenuFn: function(item, model, additionalProps) { showContextMenu(item, model, additionalProps || {}) }
                     getCategoryNameFn: function(section) { return getCategoryName(section) }
                 }
 

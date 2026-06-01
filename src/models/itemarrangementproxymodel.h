@@ -6,6 +6,7 @@
 
 #include <QtQml/qqml.h>
 
+#include <QVariant>
 #include "itemspage.h"
 #include "appsmodel.h"
 
@@ -62,6 +63,10 @@ public:
     Q_INVOKABLE void persistArrangement();
     Q_INVOKABLE int creatEmptyPage(int folderId = 0) const;
     Q_INVOKABLE void removeEmptyPage() const;
+    Q_INVOKABLE QVariantList folderEntriesForItem(const QString &id) const;
+    Q_INVOKABLE bool addItemToFolder(const QString &id, const QString &folderId);
+    Q_INVOKABLE bool addItemToNewFolder(const QString &id);
+    Q_INVOKABLE bool dissolveFolder(int folderId);
 
     ItemsPage *itemsPage() { return m_topLevel; }
 
@@ -73,6 +78,7 @@ public:
 signals:
     void topLevelPageCountChanged();
     void folderPageCountChanged(int folderId);
+    void folderRemoved(int folderId);
     void itemBroughtToFront();
 
 private:
@@ -86,8 +92,9 @@ private:
     void onFolderModelChanged();
 
     QString findAvailableFolderId();
+    QString defaultFolderNameForItem(const QString &id) const;
     ItemsPage * createFolder(const QString & id);
-    void removeFolder(const QString & idNumber);
+    void removeFolder(const QString & idNumber, bool removeTopLevelEmptyPage = true);
     ItemsPage * folderById(int id);
     QStringList allArrangedItems() const;
 

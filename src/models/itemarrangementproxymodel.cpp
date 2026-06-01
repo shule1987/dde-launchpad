@@ -17,6 +17,36 @@ Q_DECLARE_LOGGING_CATEGORY(logModels)
 
 namespace {
 constexpr int kTopLevelItemsPerPage = 7 * 4;
+
+int legacyPresetFolderCategory(const QString &name)
+{
+    if (name == QLatin1String("Internet")) return AppItem::Internet;
+    if (name == QLatin1String("Chat")) return AppItem::Chat;
+    if (name == QLatin1String("Music")) return AppItem::Music;
+    if (name == QLatin1String("Video")) return AppItem::Video;
+    if (name == QLatin1String("Graphics")) return AppItem::Graphics;
+    if (name == QLatin1String("Games")) return AppItem::Game;
+    if (name == QLatin1String("Office")) return AppItem::Office;
+    if (name == QLatin1String("Reading")) return AppItem::Reading;
+    if (name == QLatin1String("Development")) return AppItem::Development;
+    if (name == QLatin1String("System")) return AppItem::System;
+    if (name == QLatin1String("Others")) return AppItem::Others;
+    return -1;
+}
+
+QString normalizeStoredFolderName(const QString &name)
+{
+    if (name.startsWith(QLatin1String("internal/category/"))) {
+        return name;
+    }
+
+    const int category = legacyPresetFolderCategory(name);
+    if (category == -1) {
+        return name;
+    }
+
+    return QStringLiteral("internal/category/%1").arg(category);
+}
 }
 
 ItemArrangementProxyModel::~ItemArrangementProxyModel()
@@ -117,6 +147,168 @@ int ItemArrangementProxyModel::creatEmptyPage(int folderId) const
 void ItemArrangementProxyModel::removeEmptyPage() const
 {
     m_topLevel->removeEmptyPages();
+}
+
+QVariantList ItemArrangementProxyModel::folderEntriesForItem(const QString &id) const
+{
+    QVariantList entries;
+    int currentFolderId = -1;
+    std::tie(currentFolderId, std::ignore, std::ignore) = findItem(id);
+
+    for (int i = 0; i < m_folderModel.rowCount(); ++i) {
+        const QString folderDesktopId = m_folderModel.index(i, 0).data(AppItem::DesktopIdRole).toString();
+        if (folderDesktopId == id) {
+            continue;
+        }
+
+        const int folderId = QStringView{folderDesktopId}.mid(17).toInt();
+        if (folderId == currentFolderId) {
+            continue;
+        }
+
+        ItemsPage *folder = m_folders.value(folderDesktopId);
+        if (!folder) {
+            continue;
+        }
+
+        QVariantMap entry;
+        entry.insert(QStringLiteral("desktopId"), folderDesktopId);
+        entry.insert(QStringLiteral("display"), folder->name());
+        entries.append(entry);
+    }
+
+    return entries;
+}
+
+bool ItemArrangementProxyModel::addItemToFolder(const QString &id, const QString &folderId)
+{
+    if (id.isEmpty() || folderId.isEmpty() || id.startsWith(QLatin1String("internal/folders/"))) {
+        return false;
+    }
+
+    const QString fullFolderId = folderId.startsWith(QLatin1String("internal/folders/"))
+        ? folderId
+        : QStringLiteral("internal/folders/%1").arg(folderId);
+    if (!m_folders.contains(fullFolderId)) {
+        qCWarning(logModels) << "Cannot add item to missing folder:" << id << fullFolderId;
+        return false;
+    }
+
+    int currentFolderId = -1;
+    std::tie(currentFolderId, std::ignore, std::ignore) = findItem(id);
+    if (currentFolderId == -1) {
+        qCWarning(logModels) << "Cannot add missing item to folder:" << id << fullFolderId;
+        return false;
+    }
+
+    const int targetFolderId = QStringView{fullFolderId}.mid(17).toInt();
+    if (currentFolderId == targetFolderId) {
+        return true;
+    }
+
+    return performDndOperation(id, fullFolderId, DndOperation::DndJoin, -1, true);
+}
+
+bool ItemArrangementProxyModel::addItemToNewFolder(const QString &id)
+{
+    if (id.isEmpty() || id.startsWith(QLatin1String("internal/folders/"))) {
+        return false;
+    }
+
+    int sourceFolderId = -1;
+    int sourcePage = -1;
+    int sourceIndex = -1;
+    std::tie(sourceFolderId, sourcePage, sourceIndex) = findItem(id);
+    if (sourceFolderId == -1) {
+        qCWarning(logModels) << "Cannot move missing item to a new folder:" << id;
+        return false;
+    }
+
+    const QString newFolderId = findAvailableFolderId();
+    ItemsPage *newFolder = createFolder(newFolderId);
+    newFolder->setName(defaultFolderNameForItem(id));
+    newFolder->appendPage({ id });
+
+    int targetPage = -1;
+    int targetIndex = -1;
+
+    if (sourceFolderId == 0) {
+        targetPage = sourcePage;
+        targetIndex = sourceIndex;
+        m_topLevel->removeItem(id, false);
+    } else {
+        const QString sourceFolderDesktopId = QStringLiteral("internal/folders/%1").arg(sourceFolderId);
+        std::tie(targetPage, targetIndex) = m_topLevel->findItem(sourceFolderDesktopId);
+
+        ItemsPage *sourceFolder = folderById(sourceFolderId);
+        if (sourceFolder) {
+            sourceFolder->removeItem(id);
+            if (sourceFolder->itemCount() == 0) {
+                removeFolder(QString::number(sourceFolderId), false);
+            }
+        }
+    }
+
+    if (targetPage >= 0 && targetIndex >= 0) {
+        m_topLevel->insertItem(newFolderId, targetPage, targetIndex);
+    } else {
+        m_topLevel->appendItem(newFolderId);
+    }
+
+    m_topLevel->removeEmptyPages();
+    m_arrangementDirty = true;
+    saveItemArrangementToUserData();
+
+    if (rowCount() > 0) {
+        emit dataChanged(index(0, 0), index(rowCount() - 1, 0), {
+            PageRole, IndexInPageRole, FolderIdNumberRole, IconsNameRole
+        });
+    }
+
+    return true;
+}
+
+bool ItemArrangementProxyModel::dissolveFolder(int folderId)
+{
+    if (folderId <= 0) {
+        return false;
+    }
+
+    const QString fullFolderId = QStringLiteral("internal/folders/%1").arg(folderId);
+    ItemsPage *folder = m_folders.value(fullFolderId);
+    if (!folder) {
+        qCWarning(logModels) << "Cannot dissolve missing folder:" << folderId;
+        return false;
+    }
+
+    int targetPage = -1;
+    int targetIndex = -1;
+    std::tie(targetPage, targetIndex) = m_topLevel->findItem(fullFolderId);
+    if (targetPage == -1 || targetIndex == -1) {
+        qCWarning(logModels) << "Cannot dissolve folder missing from top level:" << folderId;
+        return false;
+    }
+
+    const QStringList items = folder->allArrangedItems();
+    removeFolder(QString::number(folderId), false);
+
+    int insertIndex = targetIndex;
+    for (const QString &itemId : items) {
+        m_topLevel->insertItem(itemId, targetPage, insertIndex);
+        ++insertIndex;
+    }
+
+    m_topLevel->removeEmptyPages();
+    m_arrangementDirty = true;
+    saveItemArrangementToUserData();
+
+    if (rowCount() > 0) {
+        emit dataChanged(index(0, 0), index(rowCount() - 1, 0), {
+            PageRole, IndexInPageRole, FolderIdNumberRole, IconsNameRole
+        });
+    }
+
+    return true;
 }
 
 QVariant ItemArrangementProxyModel::data(const QModelIndex &index, int role) const
@@ -255,7 +447,7 @@ void ItemArrangementProxyModel::loadItemArrangementFromUserData()
 
     for (const QString & groupName : folderGroups) {
         itemArrangementSettings.beginGroup(groupName);
-        QString folderName = itemArrangementSettings.value("name", QString()).toString();
+        QString folderName = normalizeStoredFolderName(itemArrangementSettings.value("name", QString()).toString());
         int pageCount = itemArrangementSettings.value("pageCount", 0).toInt();
         bool isTopLevel = groupName == "toplevel";
 
@@ -534,6 +726,17 @@ QString ItemArrangementProxyModel::findAvailableFolderId()
     return fullId;
 }
 
+QString ItemArrangementProxyModel::defaultFolderNameForItem(const QString &id) const
+{
+    AppItem *item = AppsModel::instance().itemFromDesktopId(id);
+    if (!item) {
+        return tr("New Folder");
+    }
+
+    const AppItem::DDECategories category = AppItem::DDECategories(CategoryUtils::parseBestMatchedCategory(item->categories()));
+    return QStringLiteral("internal/category/%1").arg(category);
+}
+
 ItemsPage *ItemArrangementProxyModel::createFolder(const QString &id)
 {
     Q_ASSERT(!id.isEmpty());
@@ -554,17 +757,21 @@ ItemsPage *ItemArrangementProxyModel::createFolder(const QString &id)
     return page;
 }
 
-void ItemArrangementProxyModel::removeFolder(const QString &idNumber)
+void ItemArrangementProxyModel::removeFolder(const QString &idNumber, bool removeTopLevelEmptyPage)
 {
     QString fullId("internal/folders/" + idNumber);
     Q_ASSERT(m_folders.contains(fullId));
 
+    emit folderRemoved(idNumber.toInt());
+
     auto *page = m_folders.take(fullId);
     page->disconnect(this);
 
-    m_topLevel->removeItem(fullId);
+    m_topLevel->removeItem(fullId, removeTopLevelEmptyPage);
     QList<QStandardItem*> result = m_folderModel.findItems(fullId);
-    m_folderModel.removeRows(result.first()->row(), 1);
+    if (!result.isEmpty()) {
+        m_folderModel.removeRows(result.first()->row(), 1);
+    }
 
     m_folders.remove(fullId);
 }

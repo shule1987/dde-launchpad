@@ -26,6 +26,7 @@ Popup {
     property real contentRevealProgress: 0
     property bool folderItemMoveEnabled: false
     property bool folderNameEditing: false
+    property bool pendingNameEdit: false
 
 
 
@@ -43,6 +44,19 @@ Popup {
             })
         }
     }
+
+    function beginFolderNameEdit() {
+        if (innerItem && typeof innerItem.beginNameEdit === "function") {
+            pendingNameEdit = false
+            innerItem.beginNameEdit()
+        }
+    }
+
+    function requestFolderNameEdit() {
+        pendingNameEdit = true
+        Qt.callLater(beginFolderNameEdit)
+    }
+
     property var folderNameFont: DTK.fontManager.t2
     required property point centerPosition
     readonly property bool isWindowedMode: LauncherController.currentFrame === "WindowedFrame"
@@ -83,6 +97,7 @@ Popup {
         folderItemMoveEnableTimer.stop()
         folderItemMoveEnabled = false
         folderNameEditing = false
+        pendingNameEdit = false
     }
 
     onAboutToShow: {
@@ -90,13 +105,27 @@ Popup {
         folderItemMoveEnabled = false
     }
 
-    onOpened: folderItemMoveEnableTimer.restart()
+    onOpened: {
+        folderItemMoveEnableTimer.restart()
+        if (pendingNameEdit) {
+            Qt.callLater(beginFolderNameEdit)
+        }
+    }
 
     Timer {
         id: folderItemMoveEnableTimer
         interval: root.scaledDuration(80)
         repeat: false
         onTriggered: root.folderItemMoveEnabled = root.visible
+    }
+
+    Connections {
+        target: ItemArrangementProxyModel
+        function onFolderRemoved(folderId) {
+            if (folderId === folderLoader.currentFolderId) {
+                root.close()
+            }
+        }
     }
 
     Loader {
@@ -109,6 +138,10 @@ Popup {
         anchors.fill: parent
 
         sourceComponent: Control {
+            function beginNameEdit() {
+                contentRoot.beginNameEdit()
+            }
+
             // Ensure drop won't fallthough the Popup.
             background: DropArea {
                 anchors.fill: parent
@@ -142,6 +175,12 @@ Popup {
                     onNameEditingChanged: root.folderNameEditing = nameEditing
 
                     signal closeFolder()
+
+                    function beginNameEdit() {
+                        nameEditing = true
+                        folderNameEdit.forceActiveFocus()
+                        folderNameEdit.selectAll()
+                    }
 
                 property Palette titleTextColor: Palette {
                     normal {

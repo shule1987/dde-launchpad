@@ -1,4 +1,6 @@
-<?xml version="1.0" ?><!DOCTYPE TS><TS version="2.1" language="ru">
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.1" language="ru">
 <context>
     <name>AppItemMenu</name>
     <message>
@@ -11,7 +13,7 @@
     </message>
     <message>
         <source>Move to Top</source>
-        <translation type="unfinished"/>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Remove from favorites</source>
@@ -57,6 +59,101 @@
         <source>Uninstall</source>
         <translation>Удалить</translation>
     </message>
+    <message>
+        <source>Rename</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Dissolve</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add to</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New Folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>AppWiz</name>
+    <message>
+        <source>%1 is not installed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Uninstall command timed out</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exit code: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Desktop file was not found</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid desktop file</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid pre-uninstall command</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Canceled by user</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Another uninstall task is already running</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No supported uninstall method was found</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Uninstall complete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; has been uninstalled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown error</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Uninstall failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to uninstall &quot;%1&quot;. %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The uninstall task was canceled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Uninstall canceled</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; was not uninstalled. %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Launcher</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>BottomBar</name>
@@ -71,6 +168,25 @@
     <message>
         <source>Full-screen Mode</source>
         <translation>Полноэкранный режим</translation>
+    </message>
+</context>
+<context>
+    <name>DesktopIntegration</name>
+    <message>
+        <source>Uninstall</source>
+        <translation type="unfinished">Удалить</translation>
+    </message>
+    <message>
+        <source>Are you sure you want to uninstall &quot;%1&quot;?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Confirm</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -92,10 +208,17 @@
     </message>
 </context>
 <context>
-    <name>FullscreenFrame</name>
+    <name>FullscreenHeader</name>
     <message>
         <source>Window Mode</source>
-        <translation>Оконный режим</translation>
+        <translation type="unfinished">Оконный режим</translation>
+    </message>
+</context>
+<context>
+    <name>ItemArrangementProxyModel</name>
+    <message>
+        <source>New Folder</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -143,18 +266,6 @@
     <message>
         <source>Others</source>
         <translation>Прочее</translation>
-    </message>
-    <message>
-        <source>Are you sure you want to uninstall &quot;%1&quot;?</source>
-        <translation>Вы уверены, что хотите удалить &quot;%1&quot;?</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>Отмена</translation>
-    </message>
-    <message>
-        <source>Confirm</source>
-        <translation>Подтвердить</translation>
     </message>
 </context>
 <context>
@@ -263,18 +374,6 @@
     <message>
         <source>launchpad</source>
         <translation>Лаунчпад</translation>
-    </message>
-    <message>
-        <source>Are you sure you want to uninstall &quot;%1&quot;?</source>
-        <translation>Вы уверены, что хотите удалить &quot;%1&quot;?</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>Отмена</translation>
-    </message>
-    <message>
-        <source>Confirm</source>
-        <translation>Подтвердить</translation>
     </message>
 </context>
 </TS>

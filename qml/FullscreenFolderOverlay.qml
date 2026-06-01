@@ -73,6 +73,7 @@ FocusScope {
     property int pendingOpenSnapshotCount: 0
     property int activeAnimationSpeedScale: 1
     property real sourceIconScaleFactor: 1.0
+    property bool pendingNameEdit: false
     readonly property real iconBlurLayerOpacity: 0.5
     readonly property int sourcePreviewGridSize: 3
     readonly property int sourcePreviewMaxIcons: sourcePreviewGridSize * sourcePreviewGridSize
@@ -104,6 +105,18 @@ FocusScope {
         if (innerItem) {
             innerItem.incrementFolderPage()
         }
+    }
+
+    function beginFolderNameEdit() {
+        if (innerItem && typeof innerItem.beginNameEdit === "function") {
+            pendingNameEdit = false
+            innerItem.beginNameEdit()
+        }
+    }
+
+    function requestFolderNameEdit() {
+        pendingNameEdit = true
+        Qt.callLater(beginFolderNameEdit)
     }
 
     readonly property int openDuration: 178
@@ -345,6 +358,7 @@ FocusScope {
         pendingOpenAfterSnapshot = false
         backgroundSnapshotUrl = ""
         pendingOpenSnapshotCount = 0
+        pendingNameEdit = false
         folderItemMoveEnabled = false
         folderNameEditing = false
         currentFolderPageCount = 0
@@ -361,6 +375,12 @@ FocusScope {
         function onFolderPageCountChanged(folderId) {
             if (folderId === root.currentFolderId) {
                 root.refreshCurrentFolderPageCount()
+            }
+        }
+
+        function onFolderRemoved(folderId) {
+            if (folderId === root.currentFolderId) {
+                root.close()
             }
         }
     }
@@ -403,7 +423,12 @@ FocusScope {
 
     ParallelAnimation {
         id: openAnimation
-        onFinished: folderItemMoveEnableTimer.restart()
+        onFinished: {
+            folderItemMoveEnableTimer.restart()
+            if (root.pendingNameEdit) {
+                root.beginFolderNameEdit()
+            }
+        }
 
         NumberAnimation {
             target: root
@@ -1037,6 +1062,12 @@ FocusScope {
                         return
                     }
                     folderPagesView.setCurrentIndex(folderPagesView.currentIndex + 1)
+                }
+
+                function beginNameEdit() {
+                    contentRoot.nameEditing = true
+                    folderNameEdit.forceActiveFocus()
+                    folderNameEdit.selectAll()
                 }
 
                 function handleFolderWheel(wheel) {

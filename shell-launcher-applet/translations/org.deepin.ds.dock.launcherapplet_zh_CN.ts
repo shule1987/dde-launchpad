@@ -1,9 +1,31 @@
-<?xml version="1.0" ?><!DOCTYPE TS><TS version="2.1" language="zh_CN">
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.1" language="zh_CN">
 <context>
     <name>AppItemMenu</name>
     <message>
         <source>Open</source>
         <translation>打开</translation>
+    </message>
+    <message>
+        <source>Rename</source>
+        <translation>重命名</translation>
+    </message>
+    <message>
+        <source>Dissolve</source>
+        <translation>解散</translation>
+    </message>
+    <message>
+        <source>Add to</source>
+        <translation>添加到</translation>
+    </message>
+    <message>
+        <source>Folder</source>
+        <translation>文件夹</translation>
+    </message>
+    <message>
+        <source>New Folder</source>
+        <translation>新文件夹</translation>
     </message>
     <message>
         <source>Pin to Top</source>
@@ -59,6 +81,81 @@
     </message>
 </context>
 <context>
+    <name>AppWiz</name>
+    <message>
+        <source>%1 is not installed</source>
+        <translation>%1 未安装</translation>
+    </message>
+    <message>
+        <source>Uninstall command timed out</source>
+        <translation>卸载命令超时</translation>
+    </message>
+    <message>
+        <source>Exit code: %1</source>
+        <translation>退出码：%1</translation>
+    </message>
+    <message>
+        <source>Desktop file was not found</source>
+        <translation>未找到桌面文件</translation>
+    </message>
+    <message>
+        <source>Invalid desktop file</source>
+        <translation>无效的桌面文件</translation>
+    </message>
+    <message>
+        <source>Invalid pre-uninstall command</source>
+        <translation>无效的预卸载命令</translation>
+    </message>
+    <message>
+        <source>Canceled by user</source>
+        <translation>用户已取消</translation>
+    </message>
+    <message>
+        <source>Another uninstall task is already running</source>
+        <translation>已有卸载任务正在运行</translation>
+    </message>
+    <message>
+        <source>No supported uninstall method was found</source>
+        <translation>未找到支持的卸载方式</translation>
+    </message>
+    <message>
+        <source>Uninstall complete</source>
+        <translation>卸载完成</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; has been uninstalled.</source>
+        <translation>“%1”已卸载。</translation>
+    </message>
+    <message>
+        <source>Unknown error</source>
+        <translation>未知错误</translation>
+    </message>
+    <message>
+        <source>Uninstall failed</source>
+        <translation>卸载失败</translation>
+    </message>
+    <message>
+        <source>Failed to uninstall &quot;%1&quot;. %2</source>
+        <translation>“%1”卸载失败。%2</translation>
+    </message>
+    <message>
+        <source>The uninstall task was canceled.</source>
+        <translation>卸载任务已取消。</translation>
+    </message>
+    <message>
+        <source>Uninstall canceled</source>
+        <translation>已取消卸载</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; was not uninstalled. %2</source>
+        <translation>“%1”未卸载。%2</translation>
+    </message>
+    <message>
+        <source>Launcher</source>
+        <translation>启动器</translation>
+    </message>
+</context>
+<context>
     <name>BottomBar</name>
     <message>
         <source>Power</source>
@@ -71,6 +168,25 @@
     <message>
         <source>Full-screen Mode</source>
         <translation>全屏模式</translation>
+    </message>
+</context>
+<context>
+    <name>DesktopIntegration</name>
+    <message>
+        <source>Uninstall</source>
+        <translation>卸载</translation>
+    </message>
+    <message>
+        <source>Are you sure you want to uninstall &quot;%1&quot;?</source>
+        <translation>您确定要卸载“%1”吗？</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取 消</translation>
+    </message>
+    <message>
+        <source>Confirm</source>
+        <translation>确 定</translation>
     </message>
 </context>
 <context>
@@ -92,10 +208,17 @@
     </message>
 </context>
 <context>
-    <name>FullscreenFrame</name>
+    <name>FullscreenHeader</name>
     <message>
         <source>Window Mode</source>
         <translation>窗口模式</translation>
+    </message>
+</context>
+<context>
+    <name>ItemArrangementProxyModel</name>
+    <message>
+        <source>New Folder</source>
+        <translation>新文件夹</translation>
     </message>
 </context>
 <context>
@@ -143,18 +266,6 @@
     <message>
         <source>Others</source>
         <translation>其他应用</translation>
-    </message>
-    <message>
-        <source>Are you sure you want to uninstall &quot;%1&quot;?</source>
-        <translation>您确定要卸载“%1”吗？</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>取 消</translation>
-    </message>
-    <message>
-        <source>Confirm</source>
-        <translation>确 定</translation>
     </message>
 </context>
 <context>
@@ -263,18 +374,6 @@
     <message>
         <source>launchpad</source>
         <translation>启动器</translation>
-    </message>
-    <message>
-        <source>Are you sure you want to uninstall &quot;%1&quot;?</source>
-        <translation>您确定要卸载“%1”吗？</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>取 消</translation>
-    </message>
-    <message>
-        <source>Confirm</source>
-        <translation>确 定</translation>
     </message>
 </context>
 </TS>
