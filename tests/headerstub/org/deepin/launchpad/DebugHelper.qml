@@ -8,4 +8,5 @@ import QtQuick 2.15
 
 QtObject {
     property bool avoidHideWindow: true
+    property bool itemBoundingEnabled: false
 }

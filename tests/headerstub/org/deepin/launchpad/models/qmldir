@@ -1,0 +1,2 @@
+module org.deepin.launchpad.models
+singleton ItemArrangementProxyModel 1.0 ItemArrangementProxyModel.qml

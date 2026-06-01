@@ -23,6 +23,9 @@ FavoritedProxyModel::FavoritedProxyModel(QObject *parent)
     setSourceModel(&AppsModel::instance());
 
     sort(0);
+    connect(&AppsModel::instance(), &AppsModel::temporaryHiddenAppsChanged, this, [this]() {
+        invalidate();
+    });
 }
 
 bool FavoritedProxyModel::exists(const QString &desktopId)
@@ -67,6 +70,10 @@ void FavoritedProxyModel::pinToTop(const QString &desktopId)
 bool FavoritedProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
 {
     QModelIndex modelIndex = this->sourceModel()->index(sourceRow, 0, sourceParent);
+
+    if (modelIndex.data(AppsModel::TemporarilyHiddenRole).toBool()) {
+        return false;
+    }
 
     return m_favoritedAppIds.contains(modelIndex.data(AppItem::DesktopIdRole).toString());
 }

@@ -133,11 +133,20 @@ bool CategorizedSortProxyModel::lessThan(const QModelIndex &source_left, const Q
     return QSortFilterProxyModel::lessThan(source_left, source_right);
 }
 
+bool CategorizedSortProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
+{
+    const QModelIndex modelIndex = sourceModel()->index(sourceRow, 0, sourceParent);
+    return !modelIndex.data(AppsModel::TemporarilyHiddenRole).toBool();
+}
+
 CategorizedSortProxyModel::CategorizedSortProxyModel(QObject *parent)
     : QSortFilterProxyModel(parent)
 {
     setSortCaseSensitivity(Qt::CaseInsensitive);
     setSourceModel(&AppsModel::instance());
+    connect(&AppsModel::instance(), &AppsModel::temporaryHiddenAppsChanged, this, [this]() {
+        invalidate();
+    });
     QScopedPointer<DConfig> config(DConfig::create("org.deepin.dde.shell", "org.deepin.ds.launchpad"));
     CategoryType categoryType = CategoryType(config->value("categoryType", FreeCategory).toInt());
     isFreeSort = (categoryType == FreeCategory);

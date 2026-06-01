@@ -56,8 +56,14 @@ InputEventItem {
         property real mergeSize: 0
 
         id: dndItem
-        visible: DebugHelper.qtDebugEnabled
+        visible: dragVisualActive || DebugHelper.qtDebugEnabled
+        z: 10000
+        opacity: dragVisualActive ? 0.92 : 1
+        width: Math.max(1, mergeSize)
+        height: Math.max(1, mergeSize)
         text: "DnD DEBUG"
+        color: DebugHelper.qtDebugEnabled ? palette.windowText : "transparent"
+        readonly property bool dragVisualActive: currentlyDraggedId !== "" || Drag.active
 
         Drag.onActiveChanged: {
             if (Drag.active) {
@@ -66,6 +72,15 @@ InputEventItem {
                 currentlyDraggedId = ""
                 currentlyDraggedIconName = ""
             }
+        }
+
+        Image {
+            anchors.fill: parent
+            visible: dndItem.dragVisualActive && source != ""
+            source: dndItem.Drag.imageSource
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            mipmap: true
         }
     }
 

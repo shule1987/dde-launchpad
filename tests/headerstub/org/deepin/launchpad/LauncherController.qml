@@ -8,10 +8,20 @@ import QtQuick 2.15
 
 QtObject {
     property bool visible: true
+    property string currentFrame: "FullscreenFrame"
     readonly property int animationSpeedScale: 1
     property int suppressCount: 0
 
     function suppressNextHideForInputFocus() {
         suppressCount += 1
+    }
+
+    function cancelHide() {
+    }
+
+    function adjustFontWeight(sourceFont, weight) {
+        let adjusted = sourceFont
+        adjusted.weight = weight
+        return adjusted
     }
 }

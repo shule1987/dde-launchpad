@@ -53,4 +53,23 @@ QtObject {
         }
         return mime
     }
+
+    function dragDesktopId(drag) {
+        if (!drag) {
+            return ""
+        }
+
+        if (typeof drag.getDataAsString === "function") {
+            const mimeId = drag.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+            if (mimeId !== "") {
+                return mimeId
+            }
+        }
+
+        if (drag.source && typeof drag.source.currentlyDraggedId !== "undefined") {
+            return drag.source.currentlyDraggedId
+        }
+
+        return ""
+    }
 }

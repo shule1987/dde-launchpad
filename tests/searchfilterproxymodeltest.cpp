@@ -34,6 +34,7 @@ private slots:
     void testSorting();
     void testSpecialCharacters();
     void testResultCountAndPageSliceBeyondFirstPage();
+    void testTemporarilyHiddenAppsAreFiltered();
 
 private:
     void setupTestData();
@@ -333,6 +334,21 @@ void TestSearchFilterProxyModel::testSpecialCharacters()
     qCDebug(logTest) << "Special app found:" << foundSpecialApp;
     QVERIFY(foundSpecialApp);
     qCInfo(logTest) << "Special characters search tests completed successfully";
+}
+
+void TestSearchFilterProxyModel::testTemporarilyHiddenAppsAreFiltered()
+{
+    SearchFilterProxyModel &model = SearchFilterProxyModel::instance();
+    AppsModel::instance().setAppTemporarilyHidden(QStringLiteral("org.deepin.calculator"), false);
+
+    model.setFilterRegularExpression(QRegularExpression(QStringLiteral("Calculator")));
+    QCOMPARE(model.rowCount(), 1);
+
+    AppsModel::instance().setAppTemporarilyHidden(QStringLiteral("org.deepin.calculator"), true);
+    QCOMPARE(model.rowCount(), 0);
+
+    AppsModel::instance().setAppTemporarilyHidden(QStringLiteral("org.deepin.calculator"), false);
+    QCOMPARE(model.rowCount(), 1);
 }
 
 void TestSearchFilterProxyModel::testResultCountAndPageSliceBeyondFirstPage()

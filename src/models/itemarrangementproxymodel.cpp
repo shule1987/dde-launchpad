@@ -130,6 +130,22 @@ QVariant ItemArrangementProxyModel::data(const QModelIndex &index, int role) con
         if (id.isEmpty() || id.contains("internal")) {
             qCWarning(logModels) << "Invalid or internal ID:" << id << "index:" << index << "row:" << index.row() << "role:" << role;
         }
+
+        if (AppsModel::instance().isAppTemporarilyHidden(id)) {
+            switch (role) {
+            case PageRole:
+            case IndexInPageRole:
+            case FolderIdNumberRole:
+                return -1;
+            case IconsNameRole:
+                return QVariant();
+            case ItemTypeRole:
+                return AppItemType;
+            default:
+                break;
+            }
+        }
+
         int folder, page, idx;
         std::tie(folder, page, idx) = findItem(id);
 
@@ -171,6 +187,9 @@ QVariant ItemArrangementProxyModel::data(const QModelIndex &index, int role) con
                 const QStringList desktopIds = m_folders.value(id)->firstNItems(9);
                 QStringList icons;
                 for (const QString & id : desktopIds) {
+                    if (AppsModel::instance().isAppTemporarilyHidden(id)) {
+                        continue;
+                    }
                     AppItem * item = AppsModel::instance().itemFromDesktopId(id);
                     if (item && !item->iconName().isEmpty()) {
                         icons.append(item->iconName());
@@ -207,6 +226,17 @@ ItemArrangementProxyModel::ItemArrangementProxyModel(QObject *parent)
 
     connect(&AppsModel::instance(), &AppsModel::rowsInserted, this, &ItemArrangementProxyModel::onSourceModelChanged);
     connect(&AppsModel::instance(), &AppsModel::rowsRemoved, this, &ItemArrangementProxyModel::onSourceModelChanged);
+    connect(&AppsModel::instance(), &AppsModel::temporaryHiddenAppsChanged, this, [this]() {
+        if (rowCount() > 0) {
+            emit dataChanged(index(0, 0), index(rowCount() - 1, 0), {
+                PageRole, IndexInPageRole, FolderIdNumberRole, IconsNameRole
+            });
+        }
+        emit topLevelPageCountChanged();
+        for (const QString &folderId : m_folders.keys()) {
+            emit folderPageCountChanged(QStringView{folderId}.mid(17).toInt());
+        }
+    });
 
     connect(&m_folderModel, &QStandardItemModel::rowsInserted, this, &ItemArrangementProxyModel::onFolderModelChanged);
     connect(&m_folderModel, &QStandardItemModel::rowsRemoved, this, &ItemArrangementProxyModel::onFolderModelChanged);

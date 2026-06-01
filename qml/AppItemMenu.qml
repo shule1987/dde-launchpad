@@ -193,7 +193,7 @@ Item {
             return
         }
 
-        LauncherController.setAvoidHide(false)
+        LauncherController.setAvoidHide(true)
         try {
             DesktopIntegration.confirmUninstallApp(root.desktopId, root.display, root.iconName)
         } finally {

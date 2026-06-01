@@ -20,6 +20,9 @@ InputEventItem {
     focus: true
 
     property bool dockAreaReservedByWindow: false
+    required property var launchAppFn
+    required property var showContextMenuFn
+    required property var getCategoryNameFn
     property alias launchAnimationViewportItem: reservedViewport
     property alias launchAnimationBackdropItem: launchAnimationBackdrop
     property alias launchAnimationForegroundItem: launchAnimationForegroundContent
@@ -335,11 +338,17 @@ InputEventItem {
 
     Label {
         id: dndItem
-        visible: DebugHelper.qtDebugEnabled
+        visible: dragVisualActive || DebugHelper.qtDebugEnabled
+        z: 10000
+        opacity: dragVisualActive ? 0.92 : 1
+        width: Math.max(1, mergeSize)
+        height: Math.max(1, mergeSize)
         text: "DnD DEBUG"
+        color: DebugHelper.qtDebugEnabled ? palette.windowText : "transparent"
 
         property string currentlyDraggedId
         property string currentlyDraggedIconName
+        readonly property bool dragVisualActive: currentlyDraggedId !== "" || Drag.active
         property bool mergeAnimPending: false
         property string mergeAnimTargetIcon: ""
         property string mergeAnimTargetIcon2: ""
@@ -359,6 +368,15 @@ InputEventItem {
                 liveReorderKey = ""
                 dragEnded()
             }
+        }
+
+        Image {
+            anchors.fill: parent
+            visible: dndItem.dragVisualActive && source != ""
+            source: dndItem.Drag.imageSource
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            mipmap: true
         }
     }
 
@@ -632,7 +650,7 @@ InputEventItem {
                                 return
                             }
 
-                            const dragId = drop.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                            const dragId = Helper.dragDesktopId(drop)
                             dropOnPage(dragId, "internal/folders/0", contentView.pageView.currentIndex)
                             parent.pageIntent = 0
                         }
@@ -844,9 +862,9 @@ InputEventItem {
                                         glassSampleRevision: root.glassSampleRevision
                                         glassLive: root.glassLiveEnabled
                                         glassEffect: root.glassEffectEnabled
-                                        launchAppFn: function(desktopId) { launchApp(desktopId) }
-                                        showContextMenuFn: function(item, model) { showContextMenu(item, model) }
-                                        getCategoryNameFn: function(section) { return getCategoryName(section) }
+                                        launchAppFn: root.launchAppFn
+                                        showContextMenuFn: root.showContextMenuFn
+                                        getCategoryNameFn: root.getCategoryNameFn
                                     }
 
                                     MouseArea {
@@ -1043,8 +1061,8 @@ InputEventItem {
             backgroundSourceOriginY: wallpaperBackground.status === Image.Ready ? wallpaperBackground.mapToItem(folderGridViewPopup, 0, 0).y : 0
             dndItem: dndItem
             focusTarget: baseLayer
-            launchAppFn: function(desktopId) { launchApp(desktopId) }
-            showContextMenuFn: function(item, model) { showContextMenu(item, model) }
+            launchAppFn: root.launchAppFn
+            showContextMenuFn: root.showContextMenuFn
             dropOnPageFn: function(dragId, dropFolderId, pageNumber) {
                 dropOnPage(dragId, dropFolderId, pageNumber)
             }

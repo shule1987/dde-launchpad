@@ -120,9 +120,19 @@ Control {
 
     function currentDragImageCacheKey() {
         const sourceKey = root.icons !== undefined ? ("folder:" + folderPreviewIcons().join(":")) : root.iconSource
-        return sourceKey + "|" + Math.round(iconLoader.width * Screen.devicePixelRatio)
-            + "x" + Math.round(iconLoader.height * Screen.devicePixelRatio)
+        const backgroundKey = root.glassSourceItem !== null ? ("glass:" + root.glassSampleRevision) : "plain"
+        return sourceKey + "|" + backgroundKey
+            + "|" + Math.round(iconVisualItem.width * Screen.devicePixelRatio)
+            + "x" + Math.round(iconVisualItem.height * Screen.devicePixelRatio)
             + "|" + root.iconScaleFactor
+    }
+
+    function clampedDragHotSpot(mouseX, mouseY) {
+        const iconPoint = inputLayer.mapToItem(iconVisualItem, mouseX, mouseY)
+        return Qt.point(
+            Math.max(0, Math.min(iconVisualItem.width, iconPoint.x)),
+            Math.max(0, Math.min(iconVisualItem.height, iconPoint.y))
+        )
     }
 
     Accessible.name: iconItemLabel.text
@@ -135,11 +145,11 @@ Control {
 
     states: State {
         name: "dragged";
-        when: mouseArea.drag.active
+        when: inputLayer.dragActive
         // FIXME: When dragging finished, the position of the item is changed for unknown reason,
         //        so we use the state to reset the x and y here.
         PropertyChanges {
-            target: mouseArea.drag.target
+            target: root
             x: x
             y: y
         }
@@ -152,10 +162,15 @@ Control {
         ColorSelector.pressed: false
         ColorSelector.family: D.Palette.CrystalColor
         flat: true
-        contentItem: Column {
+
+        contentItem: Item {
             anchors.fill: parent
 
-            Item {
+            Column {
+                id: contentColumn
+                anchors.fill: parent
+
+                Item {
                 // actually just a top padding
                 width: root.width
                 height: isWindowedMode ? 7 : root.height / 9
@@ -238,98 +253,6 @@ Control {
                         anchors.fill: parent
                         asynchronous: true
                         sourceComponent: root.icons !== undefined ? folderComponent : imageComponent
-
-                        MouseArea {
-                            id: mouseArea
-                            anchors.fill: parent
-                            hoverEnabled: false
-                            drag.target: root.dndEnabled ? root : null
-                            drag.threshold: 1
-
-                            function startProxyDragWhenReady() {
-                                if (!mouseArea.drag.active || dndItem.Drag.active) {
-                                    return
-                                }
-                                if (!root.dragImageReady || root.Drag.imageSource === "") {
-                                    root.proxyDragPending = true
-                                    return
-                                }
-
-                                root.proxyDragPending = false
-                                dndItem.currentlyDraggedId = root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]
-                                dndItem.currentlyDraggedIconName = root.iconSource
-                                dndItem.Drag.hotSpot = root.Drag.hotSpot
-                                dndItem.Drag.mimeData = root.Drag.mimeData
-                                dndItem.mergeSize = Math.min(iconLoader.width, iconLoader.height)
-                                dndItem.Drag.imageSource = root.Drag.imageSource
-                                dndItem.Drag.dragType = root.Drag.Automatic
-                                Qt.callLater(function() {
-                                    if (mouseArea.drag.active && dndItem.currentlyDraggedId === root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]) {
-                                        dndItem.Drag.active = true
-                                    }
-                                })
-                            }
-
-                            onPressed: function (mouse) {
-                                if (mouse.button === Qt.LeftButton && root.dndEnabled) {
-                                    root.proxyDragPending = false
-                                    root.Drag.hotSpot = mapToItem(iconLoader, Qt.point(mouse.x, mouse.y))
-                                    const cacheKey = root.currentDragImageCacheKey()
-                                    if (root.dragImageReady
-                                            && root.dragImageCacheKey === cacheKey
-                                            && root.dragImageCacheUrl !== "") {
-                                        root.Drag.imageSource = root.dragImageCacheUrl
-                                        return
-                                    }
-
-                                    root.dragImageReady = false
-                                    root.Drag.imageSource = ""
-                                    iconLoader.grabToImage(function(result) {
-                                        root.Drag.imageSource = result.url
-                                        root.dragImageCacheKey = cacheKey
-                                        root.dragImageCacheUrl = result.url
-                                        root.dragImageReady = true
-                                        if (root.proxyDragPending || mouseArea.drag.active) {
-                                            mouseArea.startProxyDragWhenReady()
-                                        }
-                                    })
-                                }
-                            }
-                            drag.onActiveChanged: function() {
-                                if (drag.active) {
-                                    if (typeof suppressAutoHide === "function") {
-                                        suppressAutoHide()
-                                    } else {
-                                        LauncherController.cancelHide()
-                                    }
-                                    startProxyDragWhenReady()
-                                } else {
-                                    root.proxyDragPending = false
-                                    if (!dndItem.Drag.active
-                                            && dndItem.currentlyDraggedId === root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]) {
-                                        dndItem.currentlyDraggedId = ""
-                                        dndItem.currentlyDraggedIconName = ""
-                                    }
-                                }
-                            }
-                            onClicked: function(mouse) {
-                                if (mouse.button === Qt.LeftButton) {
-                                    if (model.itemType === ItemArrangementProxyModel.FolderItemType) {
-                                        root.folderClicked()
-                                    } else {
-                                        root.itemClicked()
-                                    }
-                                } else if (mouse.button === Qt.RightButton) {
-                                    root.menuTriggered()
-                                }
-                            }
-                            // touchscreen long press.
-                            onPressAndHold: function (mouse) {
-                                if (mouse.button === Qt.NoButton) {
-                                    root.menuTriggered()
-                                }
-                            }
-                        }
                     }
                 }
 
@@ -565,36 +488,170 @@ Control {
                 font: LauncherController.adjustFontWeight(root.displayFont, Font.Light)
             }
 
-            TapHandler {
-                acceptedButtons: Qt.RightButton
-                gesturePolicy: TapHandler.WithinBounds
-                onTapped: {
-                    root.menuTriggered()
+        }
+
+        Item {
+            id: inputLayer
+            anchors.fill: parent
+            z: 1000
+            property real lastMouseX: 0
+            property real lastMouseY: 0
+            property bool leftButtonPressed: false
+            readonly property bool dragActive: dragHandler.active
+
+            function updateProxyDragPosition() {
+                if (!dndItem || !dndItem.parent) {
+                    return
+                }
+
+                const proxyPos = mapToItem(dndItem.parent, lastMouseX, lastMouseY)
+                dndItem.x = proxyPos.x - dndItem.Drag.hotSpot.x
+                dndItem.y = proxyPos.y - dndItem.Drag.hotSpot.y
+            }
+
+            function prepareDrag(mouseX, mouseY) {
+                lastMouseX = mouseX
+                lastMouseY = mouseY
+                leftButtonPressed = true
+                if (!root.dndEnabled) {
+                    return
+                }
+
+                root.proxyDragPending = false
+                root.Drag.hotSpot = root.clampedDragHotSpot(mouseX, mouseY)
+                const cacheKey = root.currentDragImageCacheKey()
+                if (root.dragImageReady
+                        && root.dragImageCacheKey === cacheKey
+                        && root.dragImageCacheUrl !== "") {
+                    root.Drag.imageSource = root.dragImageCacheUrl
+                    return
+                }
+
+                root.dragImageReady = false
+                root.Drag.imageSource = ""
+                iconVisualItem.grabToImage(function(result) {
+                    root.Drag.imageSource = result.url
+                    root.dragImageCacheKey = cacheKey
+                    root.dragImageCacheUrl = result.url
+                    root.dragImageReady = true
+                    if (root.proxyDragPending || dragHandler.active) {
+                        inputLayer.startProxyDragWhenReady()
+                    }
+                })
+            }
+
+            function startProxyDragWhenReady() {
+                if (!dragHandler.active || dndItem.Drag.active) {
+                    return
+                }
+                if (!root.dragImageReady || root.Drag.imageSource === "") {
+                    root.proxyDragPending = true
+                    return
+                }
+
+                root.proxyDragPending = false
+                dndItem.currentlyDraggedId = root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]
+                dndItem.currentlyDraggedIconName = root.iconSource
+                dndItem.Drag.hotSpot = root.Drag.hotSpot
+                dndItem.Drag.mimeData = root.Drag.mimeData
+                dndItem.Drag.keys = Object.keys(root.Drag.mimeData)
+                dndItem.Drag.supportedActions = Qt.MoveAction
+                dndItem.mergeSize = Math.min(iconVisualItem.width, iconVisualItem.height)
+                dndItem.width = Math.max(1, iconVisualItem.width)
+                dndItem.height = Math.max(1, iconVisualItem.height)
+                dndItem.Drag.imageSource = root.Drag.imageSource
+                dndItem.Drag.dragType = root.Drag.Internal
+                updateProxyDragPosition()
+                Qt.callLater(function() {
+                    if (dragHandler.active && dndItem.currentlyDraggedId === root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]) {
+                        inputLayer.updateProxyDragPosition()
+                        dndItem.Drag.active = true
+                    }
+                })
+            }
+
+            function activateItem() {
+                if (model.itemType === ItemArrangementProxyModel.FolderItemType) {
+                    root.folderClicked()
+                } else {
+                    root.itemClicked()
                 }
             }
 
             TapHandler {
+                id: leftTapHandler
                 acceptedButtons: Qt.LeftButton
                 gesturePolicy: TapHandler.WithinBounds
                 onPressedChanged: {
                     if (pressed) {
-                        root.Drag.hotSpot = mapToItem(iconLoader, point.pressPosition)
+                        inputLayer.prepareDrag(point.pressPosition.x, point.pressPosition.y)
+                    } else {
+                        inputLayer.leftButtonPressed = false
                     }
                 }
-                onTapped: {
-                    if (model.itemType === ItemArrangementProxyModel.FolderItemType) {
-                        root.folderClicked()
+                onTapped: inputLayer.activateItem()
+            }
+
+            TapHandler {
+                acceptedButtons: Qt.RightButton
+                gesturePolicy: TapHandler.WithinBounds
+                onTapped: root.menuTriggered()
+            }
+
+            DragHandler {
+                id: dragHandler
+                enabled: root.dndEnabled
+                acceptedButtons: Qt.LeftButton
+                target: root.dndEnabled && inputLayer.leftButtonPressed ? root : null
+
+                onCentroidChanged: {
+                    inputLayer.lastMouseX = centroid.position.x
+                    inputLayer.lastMouseY = centroid.position.y
+                    if (active) {
+                        inputLayer.updateProxyDragPosition()
+                    }
+                }
+
+                onActiveChanged: {
+                    if (active) {
+                        inputLayer.lastMouseX = centroid.position.x
+                        inputLayer.lastMouseY = centroid.position.y
+                        if (!inputLayer.leftButtonPressed) {
+                            inputLayer.prepareDrag(centroid.position.x, centroid.position.y)
+                        }
+                        if (typeof suppressAutoHide === "function") {
+                            suppressAutoHide()
+                        } else {
+                            LauncherController.cancelHide()
+                        }
+                        inputLayer.startProxyDragWhenReady()
                     } else {
-                        root.itemClicked()
+                        inputLayer.leftButtonPressed = false
+                        root.proxyDragPending = false
+                        if (dndItem.currentlyDraggedId === root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]) {
+                            if (dndItem.Drag.active) {
+                                dndItem.Drag.active = false
+                                return
+                            }
+                            dndItem.currentlyDraggedId = ""
+                            dndItem.currentlyDraggedIconName = ""
+                        }
                     }
                 }
             }
+
+            TapHandler {
+                acceptedDevices: PointerDevice.TouchScreen | PointerDevice.TouchPad
+                gesturePolicy: TapHandler.WithinBounds
+                onLongPressed: root.menuTriggered()
+            }
+        }
         }
         ToolTip.text: root.text
         ToolTip.delay: 500
         ToolTip.visible: hovered && iconItemLabel.truncated
         background: Loader {
-            active: root.icons === undefined
+            active: true
             sourceComponent: ItemBackground {
                 radius: isWindowedMode ? 8 : 18
                 button: iconButton

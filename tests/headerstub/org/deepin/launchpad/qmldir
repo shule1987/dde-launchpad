@@ -3,3 +3,4 @@ FullscreenHeader 1.0 ../../../../../qml/FullscreenHeader.qml
 FrostedGlassBackground 1.0 FrostedGlassBackground.qml
 singleton LauncherController 1.0 LauncherController.qml
 singleton DebugHelper 1.0 DebugHelper.qml
+singleton Helper 1.0 Helper.qml

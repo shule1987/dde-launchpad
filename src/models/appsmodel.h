@@ -7,6 +7,7 @@
 #include "appitem.h"
 
 #include <QtQml/qqml.h>
+#include <QSet>
 #include <QStandardItemModel>
 #include <QTimer>
 
@@ -26,6 +27,7 @@ public:
     enum Roles {
         TransliteratedRole = AppItem::ModelExtendedRole,
         AllTransliteratedRole,
+        TemporarilyHiddenRole,
         NameRole = AppItem::NameRole,
         ProxyModelExtendedRole = 0x10000
     };
@@ -47,11 +49,15 @@ public:
     void appendRows(const QList<AppItem *> items);
 
     AppItem * itemFromDesktopId(const QString freedesktopId) const;
+    Q_INVOKABLE bool isAppTemporarilyHidden(const QString &desktopId) const;
+    void setAppTemporarilyHidden(const QString &desktopId, bool hidden);
     [[nodiscard("might need to free them")]] const QList<AppItem *> addItems(const QList<AppItem *> &items);
     [[nodiscard("might need to free them")]] const QList<AppItem *> updateItems(const QList<AppItem *> &items);
 
     // QAbstractItemModel interface
     QVariant data(const QModelIndex &index, int role) const override;
+signals:
+    void temporaryHiddenAppsChanged();
 private slots:
     void updateModelData();
 
@@ -63,6 +69,7 @@ private:
 
     Dtk::Core::DConfig * m_dconfig;
     QStringList m_excludedAppIdList;
+    QSet<QString> m_temporarilyHiddenAppIds;
     Dtk::Core::DFileWatcherManager *m_fwIconCache = nullptr;
     QTimer *m_tmUpdateCache = nullptr;
 };

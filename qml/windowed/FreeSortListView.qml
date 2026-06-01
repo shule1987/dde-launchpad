@@ -209,7 +209,7 @@ Item {
             }
 
             onPositionChanged: function(drag) {
-                let dragId = drag.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                let dragId = Helper.dragDesktopId(drag)
                 if (dragId === desktopId) {
                     return
                 }
@@ -224,7 +224,7 @@ Item {
             }
 
             onEntered: function(drag) {
-                listDelegateDragApplyTimer.startTimer(drag.getDataAsString("text/x-dde-launcher-dnd-desktopId"))   
+                listDelegateDragApplyTimer.startTimer(Helper.dragDesktopId(drag))
                 if (folderGridViewPopup.opened) {
                     folderGridViewPopup.close()
                 }
@@ -239,7 +239,7 @@ Item {
             onDropped: function(drop) {
                 listDelegateDragApplyTimer.stopTimer()
                 drop.accept()
-                let dragId = drop.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                let dragId = Helper.dragDesktopId(drop)
                 showDropIndicator = false
                 dropOnItem(dragId, model.desktopId, op)
                 listViewDragScroller.stopScroll()

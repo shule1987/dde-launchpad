@@ -499,7 +499,11 @@ QtObject {
                 id: loader
                 anchors.fill: parent
                 focus: true
-                sourceComponent: FullscreenFrame {}
+                sourceComponent: FullscreenFrame {
+                    launchAppFn: function(desktopId) { launchApp(desktopId) }
+                    showContextMenuFn: function(item, model) { showContextMenu(item, model) }
+                    getCategoryNameFn: function(section) { return getCategoryName(section) }
+                }
 
                 Label {
                     visible: DebugHelper.qtDebugEnabled

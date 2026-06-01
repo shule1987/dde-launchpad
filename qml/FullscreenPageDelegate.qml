@@ -277,7 +277,7 @@ FocusScope {
             }
 
             function commitLiveReorder(drop) {
-                const dragId = drop.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                const dragId = Helper.dragDesktopId(drop)
                 if (dragId === "" || dragId === model.desktopId) {
                     return
                 }
@@ -294,7 +294,7 @@ FocusScope {
                 liveReorderTimer.stop()
                 root.pendingLiveReorderKey = ""
 
-                const dragId = drop.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                const dragId = Helper.dragDesktopId(drop)
                 if (dragId === "" || dragId === model.desktopId) {
                     return
                 }
@@ -372,7 +372,7 @@ FocusScope {
                     root.folderGridViewPopup.close()
                 }
 
-                const dragId = drag.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                const dragId = Helper.dragDesktopId(drag)
                 if (dragId !== model.desktopId) {
                     isDragHover = true
                 }
@@ -463,7 +463,7 @@ FocusScope {
                             return
                         }
 
-                        root.showContextMenuFn(this, model)
+                        root.showContextMenuFn(iconItemDelegate, model)
                         root.pageView.focus = true
                     }
                 }

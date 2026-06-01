@@ -16,6 +16,9 @@ RecentlyInstalledProxyModel::RecentlyInstalledProxyModel(QObject *parent)
     : QSortFilterProxyModel(parent)
 {
     qCDebug(logModels) << "Initializing RecentlyInstalledProxyModel";
+    connect(&AppsModel::instance(), &AppsModel::temporaryHiddenAppsChanged, this, [this]() {
+        invalidate();
+    });
 }
 
 bool RecentlyInstalledProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
@@ -23,6 +26,10 @@ bool RecentlyInstalledProxyModel::filterAcceptsRow(int sourceRow, const QModelIn
     QModelIndex modelIndex = this->sourceModel()->index(sourceRow, 0, sourceParent);
     if (!modelIndex.isValid())
         return false;
+    if (modelIndex.data(AppsModel::TemporarilyHiddenRole).toBool()) {
+        return false;
+    }
+
     const auto lastLaunchedTime = modelIndex.data(m_lastLaunchedTimeRole).toLongLong();
     if (lastLaunchedTime > 0)
         return false;

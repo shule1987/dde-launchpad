@@ -63,4 +63,12 @@ if(QT6_QMLTESTRUNNER_EXECUTABLE)
                 -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_gridviewcontainer_item_click.qml
                 -o -,txt
     )
+    add_test(
+        NAME launchpad-iconitemdelegate-input
+        COMMAND ${CMAKE_COMMAND} -E env QT_QPA_PLATFORM=offscreen
+                QML2_IMPORT_PATH=${CMAKE_SOURCE_DIR}/qml:${CMAKE_CURRENT_SOURCE_DIR}/headerstub
+                ${QT6_QMLTESTRUNNER_EXECUTABLE}
+                -input ${CMAKE_CURRENT_SOURCE_DIR}/tst_iconitemdelegate_input.qml
+                -o -,txt
+    )
 endif()

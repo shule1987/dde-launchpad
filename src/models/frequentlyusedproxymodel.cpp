@@ -4,6 +4,8 @@
 
 #include "frequentlyusedproxymodel.h"
 
+#include "appsmodel.h"
+
 #include <QDebug>
 #include <DConfig>
 #include <QLoggingCategory>
@@ -24,6 +26,9 @@ FrequentlyUsedProxyModel::FrequentlyUsedProxyModel(QObject *parent)
     connect(this, &QAbstractProxyModel::sourceModelChanged, this, [=](){
         sort(0, Qt::DescendingOrder);
     });
+    connect(&AppsModel::instance(), &AppsModel::temporaryHiddenAppsChanged, this, [this]() {
+        invalidate();
+    });
     
     qCInfo(logModels) << "FrequentlyUsedProxyModel initialized";
 }
@@ -31,6 +36,10 @@ FrequentlyUsedProxyModel::FrequentlyUsedProxyModel(QObject *parent)
 bool FrequentlyUsedProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
 {
     QModelIndex modelIndex = this->sourceModel()->index(sourceRow, 0, sourceParent);
+    if (modelIndex.data(AppsModel::TemporarilyHiddenRole).toBool()) {
+        return false;
+    }
+
     if (inRecentlyInstalledModel(modelIndex))
         return false;
 

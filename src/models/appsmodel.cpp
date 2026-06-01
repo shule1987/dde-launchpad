@@ -61,7 +61,8 @@ AppsModel::AppsModel(QObject *parent)
         {AppItem::IsAutoStartRole, QByteArrayLiteral("autoStart")},
         {AppItem::VendorRole, QByteArrayLiteral("vendor")},
         {AppItem::GenericNameRole, QByteArrayLiteral("genericName")},
-        {AppsModel::TransliteratedRole, QByteArrayLiteral("transliterated")}
+        {AppsModel::TransliteratedRole, QByteArrayLiteral("transliterated")},
+        {AppsModel::TemporarilyHiddenRole, QByteArrayLiteral("temporarilyHidden")}
     });
     setItemRoleNames(defaultRoleNames);
 
@@ -116,6 +117,36 @@ AppItem *AppsModel::itemFromDesktopId(const QString freedesktopId) const
     return static_cast<AppItem *>(itemFromIndex(indexes.at(0)));
 }
 
+bool AppsModel::isAppTemporarilyHidden(const QString &desktopId) const
+{
+    return m_temporarilyHiddenAppIds.contains(desktopId);
+}
+
+void AppsModel::setAppTemporarilyHidden(const QString &desktopId, bool hidden)
+{
+    if (desktopId.isEmpty()) {
+        return;
+    }
+
+    const bool wasHidden = m_temporarilyHiddenAppIds.contains(desktopId);
+    if (hidden == wasHidden) {
+        return;
+    }
+
+    if (hidden) {
+        m_temporarilyHiddenAppIds.insert(desktopId);
+    } else {
+        m_temporarilyHiddenAppIds.remove(desktopId);
+    }
+
+    if (AppItem *appItem = itemFromDesktopId(desktopId)) {
+        const QModelIndex itemIndex = indexFromItem(appItem);
+        emit dataChanged(itemIndex, itemIndex, { AppsModel::TemporarilyHiddenRole });
+    }
+
+    emit temporaryHiddenAppsChanged();
+}
+
 // the model takes the ownership for the items that actually added to the model.
 // won't try to update item if there are existing ones.
 // return the duplicated ones
@@ -164,6 +195,8 @@ const QList<AppItem *> AppsModel::updateItems(const QList<AppItem *> &items)
 QVariant AppsModel::data(const QModelIndex &index, int role) const
 {
     switch (role) {
+    case AppsModel::TemporarilyHiddenRole:
+        return isAppTemporarilyHidden(index.data(AppItem::DesktopIdRole).toString());
     case AppsModel::TransliteratedRole: {
         // TODO: 1. use icu::Transliterator for other locales
         //       2. support polyphonic characters (e.g. Music: YinYue or YinLe)

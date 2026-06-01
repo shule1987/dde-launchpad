@@ -103,6 +103,11 @@ SearchFilterProxyModel::SearchFilterProxyModel(QObject *parent)
     connect(&AppsModel::instance(), &QAbstractItemModel::rowsRemoved, this, [this]() {
         clearSearchCaches();
     });
+    connect(&AppsModel::instance(), &AppsModel::temporaryHiddenAppsChanged, this, [this]() {
+        clearSearchCaches();
+        invalidateFilter();
+        scheduleCountChanged();
+    });
 
     Q_ASSERT_X(m_dconfig->isValid(), "DConfig", "DConfig file is missing or invalid");
 
@@ -132,6 +137,9 @@ bool SearchFilterProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &
         return false;
     }
     const QRegularExpression searchPattern = this->filterRegularExpression();
+    if (modelIndex.data(AppsModel::TemporarilyHiddenRole).toBool()) {
+        return false;
+    }
 
     // 计算匹配索引
     int matchIndex = calculateWeight(modelIndex);

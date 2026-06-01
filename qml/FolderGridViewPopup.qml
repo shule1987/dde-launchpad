@@ -113,7 +113,7 @@ Popup {
             background: DropArea {
                 anchors.fill: parent
                 onDropped: {
-                    let dragId = drop.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                    let dragId = Helper.dragDesktopId(drop)
                     dropOnPage(dragId, "internal/folders/" + folderLoader.currentFolderId, folderPagesView.currentIndex)
                 }
             }
@@ -304,7 +304,7 @@ Popup {
                         }
                         onDropped: (drop) => {
                             // Boundary release requires responsive movement, BUG-344221
-                            let dragId = drop.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                            let dragId = Helper.dragDesktopId(drop)
                             dropOnPage(dragId, "internal/folders/" + folderLoader.currentFolderId, folderPagesView.currentIndex)
                             pageIntent = 0
                             createdEmptyPage = false
@@ -355,10 +355,10 @@ Popup {
 
                         anchors.fill: parent
 
-                        currentIndex: folderPageIndicator.currentIndex
                         activeFocusOnTab: false
 
                         contentItem: ListView {
+                            id: folderPagesListView
                             model: folderPagesView.contentModel
                             interactive: folderPagesView.interactive
                             currentIndex: folderPagesView.currentIndex
@@ -385,7 +385,7 @@ Popup {
                             }
 
                             Behavior on contentX {
-                                enabled: !isDragging
+                                enabled: !folderPagesListView.isDragging
 
                                 NumberAnimation {
                                     duration: root.scaledDuration(root.pageSwitchDuration)
@@ -681,7 +681,7 @@ Popup {
 
                                         onEntered: function(drag) {
                                             root.onDragEnter(this)
-                                            let dragId = drag.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                                            let dragId = Helper.dragDesktopId(drag)
                                             if (dragId !== model.desktopId) {
                                                 isDragHover = true
                                             }
@@ -689,7 +689,7 @@ Popup {
                                             folderDragApplyTimer.restart()
                                         }
                                         onPositionChanged: function(drag) {
-                                            let dragId = drag.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                                            let dragId = Helper.dragDesktopId(drag)
                                             if (dragId === model.desktopId) {
                                                 return
                                             }
@@ -710,7 +710,7 @@ Popup {
                                         }
                                         onDropped: function(drop) {
                                             isDragHover = false
-                                            let dragId = drop.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                                            let dragId = Helper.dragDesktopId(drop)
                                             if (dragId === "") {
                                                 return
                                             }
@@ -774,7 +774,7 @@ Popup {
                                                 launchApp(desktopId)
                                             }
                                             onMenuTriggered: {
-                                                showContextMenu(this, model)
+                                                showContextMenu(innerItem, model)
                                                 baseLayer.focus = true
                                             }
                                         }
@@ -805,6 +805,11 @@ Popup {
                     currentIndex: folderPagesView.currentIndex
                     interactive: true
                     spacing: isWindowedMode ? 5 : 10
+                    onCurrentIndexChanged: {
+                        if (folderPagesView.currentIndex !== currentIndex) {
+                            folderPagesView.setCurrentIndex(currentIndex)
+                        }
+                    }
 
                     delegate: Rectangle {
                         implicitWidth: isWindowedMode ? 5 : 8

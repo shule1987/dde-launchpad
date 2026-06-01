@@ -247,7 +247,7 @@ FocusScope {
         }
     }
 
-    function showContextMenu(item, model) {
+    function requestContextMenu(item, model) {
         if (showContextMenuFn) {
             showContextMenuFn(item, model)
         }
@@ -1004,7 +1004,7 @@ FocusScope {
                 onEntered: root.onDragEnter(this)
                 onExited: root.onDragExit(this)
                 onDropped: {
-                    const dragId = drop.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                    const dragId = Helper.dragDesktopId(drop)
                     dropOnPage(dragId, "internal/folders/" + root.currentFolderId, folderPagesView.currentIndex)
                 }
             }
@@ -1212,7 +1212,7 @@ FocusScope {
                             onPositionChanged: checkDragMove()
 
                             onDropped: function(drop) {
-                                const dragId = drop.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                                const dragId = Helper.dragDesktopId(drop)
                                 dropOnPage(dragId, "internal/folders/" + root.currentFolderId, folderPagesView.currentIndex)
                                 pageIntent = 0
                                 createdEmptyPage = false
@@ -1263,10 +1263,10 @@ FocusScope {
                             id: folderPagesView
                             anchors.fill: parent
                             clip: gridViews.count > 1
-                            currentIndex: folderPageIndicator.currentIndex
                             activeFocusOnTab: false
 
                             contentItem: ListView {
+                                id: folderPagesListView
                                 model: folderPagesView.contentModel
                                 interactive: folderPagesView.interactive
                                 currentIndex: folderPagesView.currentIndex
@@ -1293,7 +1293,7 @@ FocusScope {
                                 }
 
                                 Behavior on contentX {
-                                    enabled: !isDragging
+                                    enabled: !folderPagesListView.isDragging
 
                                     NumberAnimation {
                                         duration: root.animationDuration(root.pageSwitchDuration)
@@ -1500,7 +1500,7 @@ FocusScope {
 
                                                     onEntered: function(drag) {
                                                         root.onDragEnter(this)
-                                                        const dragId = drag.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                                                        const dragId = Helper.dragDesktopId(drag)
                                                         if (dragId !== model.desktopId) {
                                                             isDragHover = true
                                                         }
@@ -1509,7 +1509,7 @@ FocusScope {
                                                     }
 
                                                     onPositionChanged: function(drag) {
-                                                        const dragId = drag.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                                                        const dragId = Helper.dragDesktopId(drag)
                                                         if (dragId === model.desktopId) {
                                                             return
                                                         }
@@ -1531,7 +1531,7 @@ FocusScope {
 
                                                     onDropped: function(drop) {
                                                         isDragHover = false
-                                                        const dragId = drop.getDataAsString("text/x-dde-launcher-dnd-desktopId")
+                                                        const dragId = Helper.dragDesktopId(drop)
                                                         if (dragId === "") {
                                                             return
                                                         }
@@ -1607,7 +1607,7 @@ FocusScope {
                                                             onItemClicked: launchApp(desktopId)
 
                                                             onMenuTriggered: {
-                                                                showContextMenu(this, model)
+                                                                requestContextMenu(iconItem, model)
                                                                 if (root.focusTarget) {
                                                                     root.focusTarget.focus = true
                                                                 }
@@ -1642,6 +1642,11 @@ FocusScope {
                         currentIndex: folderPagesView.currentIndex
                         interactive: true
                         spacing: 10
+                        onCurrentIndexChanged: {
+                            if (folderPagesView.currentIndex !== currentIndex) {
+                                folderPagesView.setCurrentIndex(currentIndex)
+                            }
+                        }
 
                         delegate: Rectangle {
                             width: index === folderPageIndicator.currentIndex ? 20 : 8

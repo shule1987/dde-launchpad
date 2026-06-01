@@ -23,6 +23,7 @@
 #include <QWindow>
 #include <appinfo.h>
 #include <appmgr.h>
+#include <appsmodel.h>
 
 #include <algorithm>
 
@@ -240,9 +241,9 @@ bool DesktopIntegration::shouldSkipConfirmUninstallDialog(const QString &desktop
 
 void DesktopIntegration::uninstallApp(const QString &desktopId, const QString &displayName, const QString &iconName)
 {
-    qCInfo(logDesktopIntegration) << "Uninstalling app:" << desktopId;
     const QString & fullPath = AppInfo::fullPathByDesktopId(desktopId);
-    m_appWizIntegration->legacyRequestUninstall(fullPath, displayName, iconName);
+    qCWarning(logDesktopIntegration) << "Launchpad uninstall requested:" << desktopId << "desktop path:" << fullPath;
+    m_appWizIntegration->requestUninstall(desktopId, fullPath, displayName, iconName);
 }
 
 bool DesktopIntegration::confirmUninstallApp(const QString &desktopId, const QString &displayName, const QString &iconName)
@@ -263,6 +264,16 @@ bool DesktopIntegration::confirmUninstallApp(const QString &desktopId, const QSt
 
     const int cancelButton = dialog.addButton(tr("Cancel"));
     const int confirmButton = dialog.addButton(tr("Confirm"), true, DDialog::ButtonWarning);
+    bool confirmed = false;
+
+    connect(&dialog, &DDialog::buttonClicked, &dialog, [this, desktopId, displayName, iconName, confirmButton, &confirmed](int index) {
+        if (index != confirmButton) {
+            return;
+        }
+
+        confirmed = true;
+        uninstallApp(desktopId, displayName, iconName);
+    });
 
     if (QWindow *parentWindow = QGuiApplication::focusWindow()) {
         dialog.winId();
@@ -272,10 +283,12 @@ bool DesktopIntegration::confirmUninstallApp(const QString &desktopId, const QSt
         dialog.moveToCenterByRect(parentWindow->geometry());
     }
 
-    const bool confirmed = dialog.exec() == confirmButton;
-    if (confirmed) {
+    const int result = dialog.exec();
+    if (!confirmed && result == confirmButton) {
+        confirmed = true;
         uninstallApp(desktopId, displayName, iconName);
     }
+    qCWarning(logDesktopIntegration) << "Launchpad uninstall confirmation finished:" << desktopId << "confirmed:" << confirmed << "result:" << result;
 
     Q_UNUSED(cancelButton)
     return confirmed;
@@ -383,6 +396,14 @@ DesktopIntegration::DesktopIntegration(QObject *parent)
     connect(m_appearanceIntegration, &Appearance::wallpaperBlurhashChanged, this, &DesktopIntegration::backgroundUrlChanged);
     connect(m_appearanceIntegration, &Appearance::wallpaperUrlChanged, this, &DesktopIntegration::wallpaperUrlChanged);
     connect(m_appearanceIntegration, &Appearance::opacityChanged, this, &DesktopIntegration::opacityChanged);
+    connect(m_appWizIntegration, &AppWiz::uninstallExecutionStarted, this, [](const QString &desktopId) {
+        AppsModel::instance().setAppTemporarilyHidden(desktopId, true);
+    });
+    connect(m_appWizIntegration, &AppWiz::uninstallFinished, this, [](const QString &desktopId, bool success) {
+        if (!success) {
+            AppsModel::instance().setAppTemporarilyHidden(desktopId, false);
+        }
+    });
 }
 
 double DesktopIntegration::scaleFactor() const
