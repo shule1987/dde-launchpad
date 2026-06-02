@@ -1,3 +1,9 @@
+dde-launchpad (2.2.1) unstable; urgency=medium
+
+  * chore: bump package version.
+
+ -- shule1987 <shule1987@qq.com>  Tue, 02 Jun 2026 10:59:12 +0800
+
 dde-launchpad (2.2.0) unstable; urgency=medium
 
   * feat: add dock context action for launcher folders
