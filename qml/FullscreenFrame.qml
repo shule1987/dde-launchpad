@@ -44,6 +44,8 @@ InputEventItem {
     readonly property bool glassEffectEnabled: root.Window.window
         && root.Window.window.visible
         && !launchTransitionActive
+    readonly property bool iconGlassEffectEnabled: root.Window.window
+        && root.Window.window.visible
     readonly property real glassSampleTextureScale: 0.5
     readonly property real footerBlankTop: footer ? footer.y : 0
     readonly property real footerBlankHeight: footer ? footer.height : 0
@@ -1062,10 +1064,10 @@ InputEventItem {
                                         iconScaleFactor: baseLayer.iconScaleFactor
                                         externalDimProgress: 0
                                         searchText: footer.searchEdit.text
-                                        glassSourceItem: launchAnimationBackdrop
+                                        glassSourceItem: glassControlsSampleSource
                                         glassSampleRevision: root.glassSampleRevision
                                         glassLive: root.glassLiveEnabled
-                                        glassEffect: root.glassEffectEnabled
+                                        glassEffect: root.iconGlassEffectEnabled
                                         launchAppFn: root.launchAppFn
                                         showContextMenuFn: root.showContextMenuFn
                                         getCategoryNameFn: root.getCategoryNameFn
