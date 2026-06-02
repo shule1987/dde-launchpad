@@ -72,4 +72,39 @@ QtObject {
 
         return ""
     }
+
+    function wheelDeltaX(wheel) {
+        if (!wheel) {
+            return 0
+        }
+
+        const pixelX = wheel.pixelDelta ? wheel.pixelDelta.x : 0
+        const angleX = wheel.angleDelta ? wheel.angleDelta.x / 8 : 0
+        return pixelX !== 0 ? pixelX : angleX
+    }
+
+    function wheelDeltaY(wheel) {
+        if (!wheel) {
+            return 0
+        }
+
+        const pixelY = wheel.pixelDelta ? wheel.pixelDelta.y : 0
+        const angleY = wheel.angleDelta ? wheel.angleDelta.y / 8 : 0
+        return pixelY !== 0 ? pixelY : angleY
+    }
+
+    function wheelPageStep(wheel) {
+        const xDelta = wheelDeltaX(wheel)
+        const yDelta = wheelDeltaY(wheel)
+
+        if (Math.abs(xDelta) >= Math.abs(yDelta) && xDelta !== 0) {
+            return xDelta > 0 ? 1 : -1
+        }
+
+        if (yDelta !== 0) {
+            return yDelta > 0 ? -1 : 1
+        }
+
+        return 0
+    }
 }

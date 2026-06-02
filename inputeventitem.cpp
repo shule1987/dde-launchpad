@@ -10,6 +10,7 @@
 #include <QMouseEvent>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QWheelEvent>
 #include <QtGui/qguiapplication_platform.h>
 
 #include <xcb/xcb.h>
@@ -98,6 +99,23 @@ QVariant InputEventItem::inputMethodQuery(Qt::InputMethodQuery query) const
 }
 
 bool InputEventItem::eventFilter(QObject *obj, QEvent *event) {
+    if (event->type() == QEvent::Wheel && window()) {
+        auto *targetWindow = qobject_cast<QQuickWindow *>(obj);
+        if (!targetWindow) {
+            if (auto *targetItem = qobject_cast<QQuickItem *>(obj))
+                targetWindow = targetItem->window();
+        }
+
+        if (targetWindow == window()) {
+            auto *wheelEvent = static_cast<QWheelEvent *>(event);
+            Q_EMIT wheelReceived(wheelEvent->position(),
+                                 wheelEvent->pixelDelta(),
+                                 wheelEvent->angleDelta(),
+                                 int(wheelEvent->modifiers()));
+            return true;
+        }
+    }
+
     if (event->type() == QEvent::KeyPress && m_inputMethodSource && window()) {
         auto *targetWindow = qobject_cast<QQuickWindow *>(obj);
         if (!targetWindow) {

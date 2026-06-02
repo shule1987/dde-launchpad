@@ -5,6 +5,7 @@
 #pragma once
 
 #include <QtQml/qqml.h>
+#include <QAbstractNativeEventFilter>
 #include <QCommandLineOption>
 #include <QElapsedTimer>
 #include <QFont>
@@ -12,7 +13,8 @@
 
 class QTimer;
 class Launcher1Adaptor;
-class LauncherController : public QObject
+class QNativeGestureEvent;
+class LauncherController : public QObject, public QAbstractNativeEventFilter
 {
     Q_OBJECT
 
@@ -100,7 +102,13 @@ signals:
 private:
     explicit LauncherController(QObject *parent=nullptr);
     bool eventFilter(QObject *watched, QEvent *event) override;
+    bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override;
     void refreshDisplayRefreshRate();
+    void initializeX11TouchpadGesture();
+    bool handleX11TouchpadGestureEvent(void *message);
+    bool handleTouchpadLauncherGesture(QNativeGestureEvent *event);
+    bool updateTouchpadLauncherGesture(int fingerCount, qreal zoomAmount, bool cumulative);
+    void resetTouchpadLauncherGesture();
 
     QTimer *m_timer;
     Launcher1Adaptor * m_launcher1Adaptor;
@@ -121,4 +129,9 @@ private:
     bool m_inputFocusHideSuppressionValid = false;
     int m_inputFocusHideSuppressionMs = 0;
     QElapsedTimer m_inputFocusHideSuppressionTimer;
+    bool m_touchpadLauncherGestureActive = false;
+    bool m_touchpadLauncherGestureTriggered = false;
+    qreal m_touchpadLauncherGestureZoom = 0;
+    QElapsedTimer m_touchpadLauncherGestureUpdateTimer;
+    int m_xinput2Opcode = -1;
 };

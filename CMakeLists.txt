@@ -4,7 +4,7 @@
 
 cmake_minimum_required(VERSION 3.10)
 
-project(dde-launchpad VERSION 0.7.0)
+project(dde-launchpad VERSION 2.2.0)
 
 option(BUILD_TEST "Whether or not to build the tests" OFF)
 option(CMAKE_EXPORT_COMPILE_COMMANDS "clangd support" ON)
@@ -28,6 +28,8 @@ find_package(${DTK_NS} REQUIRED COMPONENTS Core Gui Widget)
 find_package(${ASQT_NS} 1.0 REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(XCB REQUIRED xcb)
+pkg_check_modules(X11 REQUIRED x11)
+pkg_check_modules(XI REQUIRED xi)
 find_package(ECM NO_MODULE)
 if(Qt6_VERSION VERSION_GREATER_EQUAL 6.10)
   find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)
@@ -153,9 +155,11 @@ target_link_libraries(launchpadcommon PUBLIC
     dde-integration-dbus
     treeland-integration
     ${XCB_LIBRARIES}
+    ${X11_LIBRARIES}
+    ${XI_LIBRARIES}
 )
 
-target_include_directories(launchpadcommon PRIVATE ${XCB_INCLUDE_DIRS})
+target_include_directories(launchpadcommon PRIVATE ${XCB_INCLUDE_DIRS} ${X11_INCLUDE_DIRS} ${XI_INCLUDE_DIRS})
 
 install(TARGETS launchpadcommon DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(

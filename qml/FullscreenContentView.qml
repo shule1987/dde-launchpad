@@ -28,6 +28,7 @@ Item {
     required property var launchAppFn
     required property var showContextMenuFn
     required property var getCategoryNameFn
+    property var handleWheelPageFn: null
 
     property alias pageView: listviewPage
     property alias searchGrid: searchResultGridViewContainer
@@ -49,6 +50,12 @@ Item {
         listviewPage.currentIndex = 0
         listviewPage.previousIndex = -1
         listviewPage.changedByNonKeyboard = false
+    }
+
+    function handleWheelPage(wheel, pageView) {
+        if (typeof handleWheelPageFn === "function") {
+            handleWheelPageFn(wheel, pageView)
+        }
     }
 
     ItemsPageModel {
@@ -105,6 +112,14 @@ Item {
             currentIndex = index
         }
 
+        WheelHandler {
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            enabled: listviewPage.visible
+            onWheel: function(wheel) {
+                root.handleWheelPage(wheel, listviewPage)
+            }
+        }
+
         model: itemPageModel
 
         delegate: FullscreenPageDelegate {
@@ -143,5 +158,6 @@ Item {
         iconScaleFactor: root.iconScaleFactor
         launchAppFn: root.launchAppFn
         showContextMenuFn: root.showContextMenuFn
+        handleWheelPageFn: root.handleWheelPageFn
     }
 }

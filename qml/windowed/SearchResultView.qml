@@ -86,6 +86,39 @@ Control {
                 currentIndex = Math.max(0, Math.min(index, count - 1))
             }
 
+            function handleWheelPage(wheel) {
+                const toPage = Helper.wheelPageStep(wheel)
+                if (toPage === 0 || count <= 1) {
+                    return
+                }
+
+                wheel.accepted = true
+                if (searchResultWheelPageDelay.running) {
+                    return
+                }
+
+                if (toPage < 0 && currentIndex > 0) {
+                    searchResultWheelPageDelay.start()
+                    setCurrentIndex(currentIndex - 1)
+                } else if (toPage > 0 && currentIndex < count - 1) {
+                    searchResultWheelPageDelay.start()
+                    setCurrentIndex(currentIndex + 1)
+                }
+            }
+
+            Timer {
+                id: searchResultWheelPageDelay
+                interval: Math.max(1, Math.round(150 * LauncherController.animationSpeedScale))
+                repeat: false
+            }
+
+            WheelHandler {
+                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                onWheel: function(wheel) {
+                    searchResultPagesView.handleWheelPage(wheel)
+                }
+            }
+
             onCurrentItemChanged: {
                 if (currentItem && pendingGridIndex >= 0) {
                     currentItem.currentIndex = Math.min(pendingGridIndex, Math.max(0, currentItem.count - 1))

@@ -40,6 +40,57 @@ DWIDGET_USE_NAMESPACE
 namespace {
 Q_LOGGING_CATEGORY(logDesktopIntegration, "org.deepin.dde.launchpad.desktop")
 
+constexpr char kTaskManagerDConfigAppId[] = "org.deepin.dde.shell";
+constexpr char kTaskManagerDConfigName[] = "org.deepin.ds.dock.taskmanager";
+constexpr char kDockedElementsKey[] = "dockedElements";
+
+bool isLauncherFolderId(const QString &desktopId)
+{
+    return desktopId.startsWith(QStringLiteral("internal/folder/")) ||
+           desktopId.startsWith(QStringLiteral("internal/folders/")) ||
+           desktopId.startsWith(QStringLiteral("internal/group/"));
+}
+
+QString launcherFolderSuffix(const QString &desktopId)
+{
+    if (!isLauncherFolderId(desktopId)) {
+        return {};
+    }
+
+    return desktopId.section(QLatin1Char('/'), -1);
+}
+
+QStringList launcherFolderDockElementCandidates(const QString &desktopId)
+{
+    const QString suffix = launcherFolderSuffix(desktopId);
+    if (suffix.isEmpty() || suffix == QLatin1String("0")) {
+        return {};
+    }
+
+    QStringList candidates;
+    const auto appendUnique = [&candidates](const QString &element) {
+        if (!element.isEmpty() && !candidates.contains(element)) {
+            candidates.append(element);
+        }
+    };
+
+    appendUnique(QStringLiteral("group/%1").arg(desktopId));
+    appendUnique(QStringLiteral("group/internal/folders/%1").arg(suffix));
+    appendUnique(QStringLiteral("group/internal/folder/%1").arg(suffix));
+    appendUnique(QStringLiteral("group/internal/group/%1").arg(suffix));
+    appendUnique(QStringLiteral("group/%1").arg(suffix));
+    return candidates;
+}
+
+QStringList dockedElementsFromTaskManagerConfig(DConfig *config)
+{
+    if (!config || !config->isValid()) {
+        return {};
+    }
+
+    return config->value(QString::fromLatin1(kDockedElementsKey), {}).toStringList();
+}
+
 void appendStandardContextMenuItems(QMenu *menu, const QVariantList &items)
 {
     for (const QVariant &item : items) {
@@ -206,6 +257,19 @@ QString DesktopIntegration::wallpaperUrl() const
 
 bool DesktopIntegration::isDockedApp(const QString &desktopId) const
 {
+    if (isLauncherFolderId(desktopId)) {
+        QScopedPointer<DConfig> config(DConfig::create(QString::fromLatin1(kTaskManagerDConfigAppId),
+                                                       QString::fromLatin1(kTaskManagerDConfigName)));
+        const QStringList dockedElements = dockedElementsFromTaskManagerConfig(config.data());
+        for (const QString &candidate : launcherFolderDockElementCandidates(desktopId)) {
+            if (dockedElements.contains(candidate)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // This is something we shouldn't do but anyway...
     const QString & fullPath = AppInfo::fullPathByDesktopId(desktopId);
     // Seems QML's list type doesn't have a contains() method...
@@ -214,6 +278,28 @@ bool DesktopIntegration::isDockedApp(const QString &desktopId) const
 
 void DesktopIntegration::sendToDock(const QString &desktopId)
 {
+    if (isLauncherFolderId(desktopId)) {
+        QScopedPointer<DConfig> config(DConfig::create(QString::fromLatin1(kTaskManagerDConfigAppId),
+                                                       QString::fromLatin1(kTaskManagerDConfigName)));
+        QStringList dockedElements = dockedElementsFromTaskManagerConfig(config.data());
+        const QStringList candidates = launcherFolderDockElementCandidates(desktopId);
+        for (const QString &candidate : candidates) {
+            if (dockedElements.contains(candidate)) {
+                qCInfo(logDesktopIntegration) << "Launcher folder already docked:" << desktopId << candidate;
+                return;
+            }
+        }
+
+        if (config && config->isValid() && !candidates.isEmpty()) {
+            dockedElements.append(candidates.constFirst());
+            config->setValue(QString::fromLatin1(kDockedElementsKey), dockedElements);
+            qCInfo(logDesktopIntegration) << "Docked launcher folder:" << desktopId << candidates.constFirst();
+        } else {
+            qCWarning(logDesktopIntegration) << "Cannot dock launcher folder due to invalid taskmanager config:" << desktopId;
+        }
+        return;
+    }
+
     qCInfo(logDesktopIntegration) << "Sending app to dock:" << desktopId;
     const QString & fullPath = AppInfo::fullPathByDesktopId(desktopId);
     return m_dockIntegration->sendToDock(fullPath);
@@ -221,6 +307,26 @@ void DesktopIntegration::sendToDock(const QString &desktopId)
 
 void DesktopIntegration::removeFromDock(const QString &desktopId)
 {
+    if (isLauncherFolderId(desktopId)) {
+        QScopedPointer<DConfig> config(DConfig::create(QString::fromLatin1(kTaskManagerDConfigAppId),
+                                                       QString::fromLatin1(kTaskManagerDConfigName)));
+        QStringList dockedElements = dockedElementsFromTaskManagerConfig(config.data());
+        const QStringList candidates = launcherFolderDockElementCandidates(desktopId);
+        bool changed = false;
+        for (const QString &candidate : candidates) {
+            const int removed = dockedElements.removeAll(candidate);
+            changed = changed || removed > 0;
+        }
+
+        if (config && config->isValid() && changed) {
+            config->setValue(QString::fromLatin1(kDockedElementsKey), dockedElements);
+            qCInfo(logDesktopIntegration) << "Undocked launcher folder:" << desktopId;
+        } else if (!config || !config->isValid()) {
+            qCWarning(logDesktopIntegration) << "Cannot undock launcher folder due to invalid taskmanager config:" << desktopId;
+        }
+        return;
+    }
+
     qCInfo(logDesktopIntegration) << "Removing app from dock:" << desktopId;
     const QString & fullPath = AppInfo::fullPathByDesktopId(desktopId);
     return m_dockIntegration->removeFromDock(fullPath);

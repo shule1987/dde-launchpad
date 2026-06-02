@@ -107,6 +107,12 @@ FocusScope {
         }
     }
 
+    function handleWheelDeltas(pixelDelta, angleDelta, modifiers) {
+        if (innerItem && typeof innerItem.handleWheelDeltas === "function") {
+            innerItem.handleWheelDeltas(pixelDelta, angleDelta, modifiers)
+        }
+    }
+
     function beginFolderNameEdit() {
         if (innerItem && typeof innerItem.beginNameEdit === "function") {
             pendingNameEdit = false
@@ -1078,15 +1084,7 @@ FocusScope {
                     }
 
                     wheelFocusSink.forceActiveFocus()
-                    const xDelta = wheel.angleDelta.x / 8
-                    const yDelta = wheel.angleDelta.y / 8
-                    let toPage = 0
-
-                    if (yDelta !== 0) {
-                        toPage = yDelta > 0 ? -1 : 1
-                    } else if (xDelta !== 0) {
-                        toPage = xDelta > 0 ? 1 : -1
-                    }
+                    const toPage = Helper.wheelPageStep(wheel)
 
                     if (toPage < 0) {
                         folderWheelPageDelay.start()
@@ -1095,6 +1093,15 @@ FocusScope {
                         folderWheelPageDelay.start()
                         incrementFolderPage()
                     }
+                }
+
+                function handleWheelDeltas(pixelDelta, angleDelta, modifiers) {
+                    handleFolderWheel({
+                        pixelDelta: pixelDelta,
+                        angleDelta: angleDelta,
+                        modifiers: modifiers,
+                        accepted: false
+                    })
                 }
 
                 DropArea {
@@ -1284,12 +1291,6 @@ FocusScope {
                             }
                         }
 
-                        WheelHandler {
-                            onWheel: function(wheel) {
-                                folderContentItem.handleFolderWheel(wheel)
-                            }
-                        }
-
                         SwipeView {
                             id: folderPagesView
                             anchors.fill: parent
@@ -1329,6 +1330,13 @@ FocusScope {
                                     NumberAnimation {
                                         duration: root.animationDuration(root.pageSwitchDuration)
                                         easing.type: Easing.OutCubic
+                                    }
+                                }
+
+                                WheelHandler {
+                                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                                    onWheel: function(wheel) {
+                                        folderContentItem.handleFolderWheel(wheel)
                                     }
                                 }
                             }

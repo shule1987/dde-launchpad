@@ -36,6 +36,7 @@ signals:
     void inputMethodSourceChanged();
     void pointerPressed(const QPointF &position, int button, int modifiers);
     void pointerReleased(const QPointF &position, int button, int modifiers);
+    void wheelReceived(const QPointF &position, const QPoint &pixelDelta, const QPoint &angleDelta, int modifiers);
 
 private:
     bool handleMouseEvent(QEvent::Type type, const QPointF &position, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);

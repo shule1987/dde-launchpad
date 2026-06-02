@@ -102,6 +102,11 @@ Item {
             return [
                 { command: "open", text: qsTr("Open") },
                 { command: "renameFolder", text: qsTr("Rename") },
+                {
+                    command: "dock",
+                    text: DesktopIntegration.isDockedApp(root.desktopId) ? qsTr("Remove from dock") : qsTr("Send to dock"),
+                    enabled: folderIdNumber() > 0
+                },
                 { separator: true },
                 { command: "dissolveFolder", text: qsTr("Dissolve") }
             ]

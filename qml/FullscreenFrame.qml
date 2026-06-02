@@ -190,6 +190,19 @@ InputEventItem {
         activateWindowForInput()
     }
 
+    onWheelReceived: function(position, pixelDelta, angleDelta, modifiers) {
+        if (!LauncherController.visible || LauncherController.currentFrame !== "FullscreenFrame") {
+            return
+        }
+
+        if (folderGridViewPopup.visible) {
+            folderGridViewPopup.handleWheelDeltas(pixelDelta, angleDelta, modifiers)
+            return
+        }
+
+        fullscreenCanvas.handleCanvasWheelDeltas(pixelDelta, angleDelta, modifiers)
+    }
+
     function refreshGlassSamples() {
         glassSampleRevision += 1
         glassBackdropCapture.scheduleUpdate()
@@ -724,6 +737,72 @@ InputEventItem {
                                 anchors.bottomMargin: baseLayer.bottomPadding
                                 clip: true
 
+                                function wheelFromDeltas(pixelDelta, angleDelta, modifiers) {
+                                    return {
+                                        pixelDelta: pixelDelta,
+                                        angleDelta: angleDelta,
+                                        modifiers: modifiers,
+                                        accepted: false
+                                    }
+                                }
+
+                                function handlePageWheel(wheel, explicitPageView) {
+                                    const targetPageView = explicitPageView
+                                            || (footer.searchEdit.text !== "" ? contentView.searchPageView : contentView.pageView)
+                                    if (!targetPageView || targetPageView.count <= 1) {
+                                        return
+                                    }
+
+                                    const toPage = Helper.wheelPageStep(wheel)
+                                    if (toPage === 0) {
+                                        return
+                                    }
+
+                                    wheel.accepted = true
+                                    if (flipPageDelay.running) {
+                                        return
+                                    }
+
+                                    flipPageDelay.start()
+                                    if (!footer.searchEdit.focus) {
+                                        baseLayer.focus = true
+                                    }
+                                    targetPageView.changedByNonKeyboard = true
+                                    if (toPage < 0) {
+                                        decrementPageIndex(targetPageView)
+                                    } else {
+                                        incrementPageIndex(targetPageView)
+                                    }
+                                }
+
+                                function handleCanvasWheel(wheel, explicitPageView) {
+                                    if (wheel.modifiers & Qt.ControlModifier) {
+                                        const yDelta = Helper.wheelDeltaY(wheel)
+                                        if (yDelta > 0) {
+                                            baseLayer.increaseIconScale()
+                                            wheel.accepted = true
+                                        } else if (yDelta < 0) {
+                                            baseLayer.decreaseIconScale()
+                                            wheel.accepted = true
+                                        }
+                                        return
+                                    }
+
+                                    handlePageWheel(wheel, explicitPageView)
+                                }
+
+                                function handleCanvasWheelDeltas(pixelDelta, angleDelta, modifiers, explicitPageView) {
+                                    handleCanvasWheel(wheelFromDeltas(pixelDelta, angleDelta, modifiers), explicitPageView)
+                                }
+
+                                WheelHandler {
+                                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                                    enabled: !folderGridViewPopup.visible
+                                    onWheel: function(wheel) {
+                                        fullscreenCanvas.handleCanvasWheel(wheel)
+                                    }
+                                }
+
                                 MouseArea {
                                     anchors.fill: parent
                                     scrollGestureEnabled: false
@@ -745,47 +824,6 @@ InputEventItem {
                                         }
                                         if (!DebugHelper.avoidHideWindow) {
                                             LauncherController.visible = false
-                                        }
-                                    }
-
-                                    onWheel: function(wheel) {
-                                        if (wheel.modifiers & Qt.ControlModifier) {
-                                            const yDelta = wheel.angleDelta.y / 8
-                                            if (yDelta > 0) {
-                                                baseLayer.increaseIconScale()
-                                            } else if (yDelta < 0) {
-                                                baseLayer.decreaseIconScale()
-                                            }
-                                            return
-                                        }
-
-                                        if (flipPageDelay.running) {
-                                            return
-                                        }
-
-                                        const xDelta = wheel.angleDelta.x / 8
-                                        const yDelta = wheel.angleDelta.y / 8
-                                        let toPage = 0
-                                        if (yDelta !== 0) {
-                                            toPage = yDelta > 0 ? -1 : 1
-                                        } else if (xDelta !== 0) {
-                                            toPage = xDelta > 0 ? 1 : -1
-                                        }
-
-                                        if (toPage < 0) {
-                                            flipPageDelay.start()
-                                            if (!footer.searchEdit.focus) {
-                                                baseLayer.focus = true
-                                            }
-                                            contentView.pageView.changedByNonKeyboard = true
-                                            decrementPageIndex(contentView.pageView)
-                                        } else if (toPage > 0) {
-                                            flipPageDelay.start()
-                                            if (!footer.searchEdit.focus) {
-                                                baseLayer.focus = true
-                                            }
-                                            contentView.pageView.changedByNonKeyboard = true
-                                            incrementPageIndex(contentView.pageView)
                                         }
                                     }
                                 }
@@ -865,6 +903,9 @@ InputEventItem {
                                         launchAppFn: root.launchAppFn
                                         showContextMenuFn: root.showContextMenuFn
                                         getCategoryNameFn: root.getCategoryNameFn
+                                        handleWheelPageFn: function(wheel, pageView) {
+                                            fullscreenCanvas.handleCanvasWheel(wheel, pageView)
+                                        }
                                     }
 
                                     MouseArea {

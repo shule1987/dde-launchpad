@@ -9,6 +9,7 @@
 #include <QQuickWindow>
 #include <QSignalSpy>
 #include <QTest>
+#include <QWheelEvent>
 
 #include "../inputeventitem.h"
 
@@ -20,6 +21,7 @@ private slots:
     void printableKeyStartsSearchWhenNoEditableItemHasFocus();
     void printableKeyDoesNotStealEditableFocus();
     void inputMethodCommitDoesNotStartSearchWhileEditingText();
+    void windowWheelEventIsForwardedWithPixelDelta();
 };
 
 void TestInputEventItem::printableKeyStartsSearchWhenNoEditableItemHasFocus()
@@ -102,6 +104,37 @@ void TestInputEventItem::inputMethodCommitDoesNotStartSearchWhileEditingText()
 
     QCOMPARE(inputSpy.count(), 0);
     QCOMPARE(searchEdit.property("text").toString(), QString());
+}
+
+void TestInputEventItem::windowWheelEventIsForwardedWithPixelDelta()
+{
+    QQuickWindow window;
+    InputEventItem root;
+    QSignalSpy wheelSpy(&root, &InputEventItem::wheelReceived);
+
+    root.setParentItem(window.contentItem());
+    root.setSize(QSizeF(200, 200));
+
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QWheelEvent wheelEvent(QPointF(40, 50),
+                           QPointF(140, 150),
+                           QPoint(18, 0),
+                           QPoint(0, 0),
+                           Qt::NoButton,
+                           Qt::NoModifier,
+                           Qt::ScrollUpdate,
+                           false);
+    QCoreApplication::sendEvent(&window, &wheelEvent);
+
+    QCOMPARE(wheelSpy.count(), 1);
+    const QList<QVariant> arguments = wheelSpy.takeFirst();
+    QCOMPARE(arguments.at(0).toPointF(), QPointF(40, 50));
+    QCOMPARE(arguments.at(1).toPoint(), QPoint(18, 0));
+    QCOMPARE(arguments.at(2).toPoint(), QPoint(0, 0));
+    QCOMPARE(arguments.at(3).toInt(), int(Qt::NoModifier));
+    QVERIFY(wheelEvent.isAccepted());
 }
 
 int main(int argc, char **argv)

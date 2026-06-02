@@ -250,6 +250,7 @@ Popup {
                 }
 
                 Rectangle {
+                    id: folderPagingArea
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     color: "transparent"
@@ -277,14 +278,7 @@ Popup {
 
                         // 鼠标滚轮翻页时将焦点转移到 wheelFocusSink，使 GridView 失去 activeFocus
                         wheelFocusSink.forceActiveFocus()
-                        let xDelta = wheel.angleDelta.x / 8
-                        let yDelta = wheel.angleDelta.y / 8
-                        let toPage = 0; // -1 prev, +1 next, 0 don't change
-                        if (yDelta !== 0) {
-                            toPage = (yDelta > 0) ? -1 : 1
-                        } else if (xDelta !== 0) {
-                            toPage = (xDelta > 0) ? 1 : -1
-                        }
+                        const toPage = Helper.wheelPageStep(wheel)
                         if (toPage < 0) {
                             folderWheelPageDelay.start()
                             decrementFolderPage()
@@ -382,12 +376,6 @@ Popup {
                         }
                     }
 
-                    WheelHandler {
-                        onWheel: function(wheel) {
-                            parent.handleFolderWheel(wheel)
-                        }
-                    }
-
                     SwipeView {
                         id: folderPagesView
                         clip: gridViews.count > 1
@@ -429,6 +417,13 @@ Popup {
                                 NumberAnimation {
                                     duration: root.scaledDuration(root.pageSwitchDuration)
                                     easing.type: Easing.OutCubic
+                                }
+                            }
+
+                            WheelHandler {
+                                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                                onWheel: function(wheel) {
+                                    folderPagingArea.handleFolderWheel(wheel)
                                 }
                             }
                         }

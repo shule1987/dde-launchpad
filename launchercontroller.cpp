@@ -5,6 +5,7 @@
 #include "launchercontroller.h"
 
 #include <QDir>
+#include <QByteArray>
 #include <QTimer>
 #include <QSettings>
 #include <QProcess>
@@ -13,6 +14,7 @@
 #include <QGuiApplication>
 #include <QKeyEvent>
 #include <QInputEvent>
+#include <QNativeGestureEvent>
 #include <QStandardPaths>
 #include <DGuiApplicationHelper>
 #include <QCommandLineParser>
@@ -20,13 +22,31 @@
 #include <QDBusMessage>
 #include <QDBusConnection>
 #include <QLoggingCategory>
+#include <QtGui/qguiapplication_platform.h>
 
 #include <private/qguiapplication_p.h>
+
+#include <X11/Xlib.h>
+#include <X11/extensions/XInput2.h>
+#include <X11/extensions/XI2proto.h>
+#include <xcb/xcb.h>
+
+#ifdef KeyPress
+#undef KeyPress
+#endif
+#ifdef KeyRelease
+#undef KeyRelease
+#endif
 
 DGUI_USE_NAMESPACE
 
 namespace {
 Q_LOGGING_CATEGORY(logController, "org.deepin.dde.launchpad.controller")
+
+constexpr int launcherGestureMinFingerCount = 4;
+constexpr int launcherGestureMaxFingerCount = 5;
+constexpr qreal launcherGestureZoomThreshold = 0.015;
+constexpr qint64 launcherGestureIdleResetMs = 450;
 
 qreal currentXrandrRefreshRate(const QString &screenName)
 {
@@ -76,6 +96,8 @@ LauncherController::LauncherController(QObject *parent)
     , m_visible(false)
 {
     qApp->installEventFilter(this);
+    qApp->installNativeEventFilter(this);
+    initializeX11TouchpadGesture();
 
     // TODO: settings should be managed in somewhere else.
     const QString settingBasePath(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation));
@@ -155,7 +177,10 @@ void LauncherController::Toggle()
 
 LauncherController::~LauncherController()
 {
-
+    if (qApp) {
+        qApp->removeEventFilter(this);
+        qApp->removeNativeEventFilter(this);
+    }
 }
 
 bool LauncherController::visible() const
@@ -279,6 +304,11 @@ void LauncherController::suppressNextHideForInputFocus(int milliseconds)
 
 bool LauncherController::eventFilter(QObject *watched, QEvent *event)
 {
+    if (event->type() == QEvent::NativeGesture
+            && handleTouchpadLauncherGesture(static_cast<QNativeGestureEvent *>(event))) {
+        return true;
+    }
+
     switch (event->type()) {
     case QEvent::KeyPress:
     case QEvent::KeyRelease:
@@ -311,6 +341,178 @@ bool LauncherController::eventFilter(QObject *watched, QEvent *event)
     }
 
     return QObject::eventFilter(watched, event);
+}
+
+bool LauncherController::nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result)
+{
+    Q_UNUSED(result)
+
+    if (eventType == QByteArrayLiteral("xcb_generic_event_t"))
+        handleX11TouchpadGestureEvent(message);
+
+    return false;
+}
+
+void LauncherController::initializeX11TouchpadGesture()
+{
+    auto *x11App = qGuiApp->nativeInterface<QNativeInterface::QX11Application>();
+    if (!x11App || !x11App->display())
+        return;
+
+    Display *display = x11App->display();
+    int eventBase = 0;
+    int errorBase = 0;
+    int xiOpcode = -1;
+    if (!XQueryExtension(display, "XInputExtension", &xiOpcode, &eventBase, &errorBase)) {
+        qCDebug(logController) << "XInput extension is not available";
+        return;
+    }
+
+    int major = 2;
+    int minor = 4;
+    if (XIQueryVersion(display, &major, &minor) != Success || major < 2 || (major == 2 && minor < 4)) {
+        qCDebug(logController) << "XInput 2.4 gesture events are not available";
+        return;
+    }
+
+    unsigned char mask[XIMaskLen(XI_LASTEVENT)] = {};
+    XISetMask(mask, XI_GesturePinchBegin);
+    XISetMask(mask, XI_GesturePinchUpdate);
+    XISetMask(mask, XI_GesturePinchEnd);
+
+    XIEventMask eventMask;
+    eventMask.deviceid = XIAllMasterDevices;
+    eventMask.mask_len = sizeof(mask);
+    eventMask.mask = mask;
+
+    for (int screen = 0; screen < ScreenCount(display); ++screen)
+        XISelectEvents(display, RootWindow(display, screen), &eventMask, 1);
+
+    XFlush(display);
+    m_xinput2Opcode = xiOpcode;
+    qCDebug(logController) << "XInput 2.4 pinch gesture listener enabled";
+}
+
+bool LauncherController::handleX11TouchpadGestureEvent(void *message)
+{
+    if (m_xinput2Opcode < 0 || !message)
+        return false;
+
+    auto *event = static_cast<xcb_generic_event_t *>(message);
+    if ((event->response_type & ~0x80) != XCB_GE_GENERIC)
+        return false;
+
+    auto *genericEvent = reinterpret_cast<xcb_ge_event_t *>(event);
+    if (genericEvent->pad0 != m_xinput2Opcode)
+        return false;
+
+    if (genericEvent->event_type != XI_GesturePinchBegin
+            && genericEvent->event_type != XI_GesturePinchUpdate
+            && genericEvent->event_type != XI_GesturePinchEnd) {
+        return false;
+    }
+
+    auto *pinchEvent = reinterpret_cast<xXIGesturePinchEvent *>(event);
+    const int fingerCount = static_cast<int>(pinchEvent->detail);
+    if (pinchEvent->flags & XIGesturePinchEventCancelled) {
+        resetTouchpadLauncherGesture();
+        return true;
+    }
+
+    switch (genericEvent->event_type) {
+    case XI_GesturePinchBegin:
+        resetTouchpadLauncherGesture();
+        if (fingerCount >= launcherGestureMinFingerCount && fingerCount <= launcherGestureMaxFingerCount) {
+            m_touchpadLauncherGestureActive = true;
+            m_touchpadLauncherGestureUpdateTimer.start();
+            return true;
+        }
+        return false;
+    case XI_GesturePinchEnd:
+        resetTouchpadLauncherGesture();
+        return true;
+    case XI_GesturePinchUpdate: {
+        const qreal scale = static_cast<qreal>(pinchEvent->scale) / 65536.0;
+        if (scale <= 0)
+            return false;
+
+        return updateTouchpadLauncherGesture(fingerCount, scale - 1.0, true);
+    }
+    default:
+        return false;
+    }
+}
+
+bool LauncherController::handleTouchpadLauncherGesture(QNativeGestureEvent *event)
+{
+    if (!event)
+        return false;
+
+    switch (event->gestureType()) {
+    case Qt::BeginNativeGesture:
+        resetTouchpadLauncherGesture();
+        return false;
+    case Qt::EndNativeGesture:
+        resetTouchpadLauncherGesture();
+        return false;
+    case Qt::ZoomNativeGesture:
+        break;
+    default:
+        return false;
+    }
+
+    const int fingerCount = event->fingerCount();
+    if (fingerCount < launcherGestureMinFingerCount || fingerCount > launcherGestureMaxFingerCount)
+        return false;
+
+    const qreal zoomDelta = event->value();
+    if (qFuzzyIsNull(zoomDelta))
+        return true;
+
+    return updateTouchpadLauncherGesture(fingerCount, zoomDelta, false);
+}
+
+bool LauncherController::updateTouchpadLauncherGesture(int fingerCount, qreal zoomAmount, bool cumulative)
+{
+    if (fingerCount < launcherGestureMinFingerCount || fingerCount > launcherGestureMaxFingerCount)
+        return false;
+
+    if (m_touchpadLauncherGestureUpdateTimer.isValid()
+            && m_touchpadLauncherGestureUpdateTimer.elapsed() > launcherGestureIdleResetMs) {
+        resetTouchpadLauncherGesture();
+    }
+    m_touchpadLauncherGestureUpdateTimer.start();
+    m_touchpadLauncherGestureActive = true;
+
+    if (cumulative) {
+        m_touchpadLauncherGestureZoom = zoomAmount;
+    } else {
+        m_touchpadLauncherGestureZoom += zoomAmount;
+    }
+
+    if (m_touchpadLauncherGestureTriggered)
+        return true;
+
+    if (m_touchpadLauncherGestureZoom <= -launcherGestureZoomThreshold) {
+        updateSlowLaunchAnimationFromKeyboardModifiers();
+        setVisible(true);
+        m_touchpadLauncherGestureTriggered = true;
+    } else if (m_touchpadLauncherGestureZoom >= launcherGestureZoomThreshold) {
+        updateSlowLaunchAnimationFromKeyboardModifiers();
+        m_inputFocusHideSuppressionValid = false;
+        setVisible(false);
+        m_touchpadLauncherGestureTriggered = true;
+    }
+
+    return true;
+}
+
+void LauncherController::resetTouchpadLauncherGesture()
+{
+    m_touchpadLauncherGestureActive = false;
+    m_touchpadLauncherGestureTriggered = false;
+    m_touchpadLauncherGestureZoom = 0;
+    m_touchpadLauncherGestureUpdateTimer.invalidate();
 }
 
 void LauncherController::refreshDisplayRefreshRate()

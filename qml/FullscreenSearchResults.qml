@@ -17,6 +17,7 @@ Item {
     required property real iconScaleFactor
     required property var launchAppFn
     required property var showContextMenuFn
+    property var handleWheelPageFn: null
 
     property alias pageView: searchPagesView
     property int currentIndex: 0
@@ -67,6 +68,12 @@ Item {
         syncingCurrentIndex = true
         currentIndex = globalIndex
         syncingCurrentIndex = false
+    }
+
+    function handleWheelPage(wheel) {
+        if (typeof handleWheelPageFn === "function") {
+            handleWheelPageFn(wheel, searchPagesView)
+        }
     }
 
     onCurrentIndexChanged: {
@@ -121,6 +128,14 @@ Item {
 
         function setCurrentIndex(index) {
             currentIndex = Math.max(0, Math.min(index, count - 1))
+        }
+
+        WheelHandler {
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            enabled: searchPagesView.visible
+            onWheel: function(wheel) {
+                root.handleWheelPage(wheel)
+            }
         }
 
         onDragStarted: {
