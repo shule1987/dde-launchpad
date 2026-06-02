@@ -76,11 +76,14 @@ FocusScope {
         property int cellWidth: cellHeight
         readonly property real gridCellWidth: cellWidth + (root.compactCentered ? root.paddingColumns : 0)
         readonly property real gridCellHeight: cellHeight + (root.compactCentered ? root.paddingRows : 0)
-        readonly property int visibleColumns: root.compactCentered && root.compactItemCount > 0
-            ? Math.min(root.columns, root.compactItemCount)
+        readonly property int effectiveCompactItemCount: root.compactItemCount > 0
+            ? root.compactItemCount
+            : Math.max(0, gridView.count)
+        readonly property int visibleColumns: root.compactCentered && effectiveCompactItemCount > 0
+            ? Math.min(root.columns, effectiveCompactItemCount)
             : root.columns
-        readonly property int visibleRows: root.compactCentered && root.compactItemCount > 0
-            ? Math.min(root.rows, Math.ceil(root.compactItemCount / Math.max(1, root.columns)))
+        readonly property int visibleRows: root.compactCentered && effectiveCompactItemCount > 0
+            ? Math.min(root.rows, Math.ceil(effectiveCompactItemCount / Math.max(1, root.columns)))
             : root.rows
         Rectangle {
             x: Math.round((parent.width - width) / 2)

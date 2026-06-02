@@ -382,6 +382,40 @@ InputEventItem {
         return Math.max(16, Math.round(dockTaskbarIconSize() * 1.08))
     }
 
+    function pointToRectDistance(rect, point)
+    {
+        if (rect.width <= 0 || rect.height <= 0) {
+            return Number.MAX_VALUE
+        }
+
+        const rectRight = rect.x + rect.width
+        const rectBottom = rect.y + rect.height
+        const dx = point.x < rect.x
+            ? rect.x - point.x
+            : (point.x > rectRight ? point.x - rectRight : 0)
+        const dy = point.y < rect.y
+            ? rect.y - point.y
+            : (point.y > rectBottom ? point.y - rectBottom : 0)
+
+        return Math.sqrt(dx * dx + dy * dy)
+    }
+
+    function dockDragScaleProgress(dockRect, point)
+    {
+        const distance = pointToRectDistance(dockRect, point)
+        if (distance === Number.MAX_VALUE) {
+            return 0
+        }
+
+        const dockThickness = isHorizontalDock ? dockRect.height : dockRect.width
+        const transitionDistance = Math.max(
+            72,
+            Math.min(180, dockThickness * 2.2 + DesktopIntegration.dockSpacing)
+        )
+        const linearProgress = Math.max(0, Math.min(1, 1 - distance / transitionDistance))
+        return linearProgress * linearProgress * (3 - 2 * linearProgress)
+    }
+
     function sendDraggedItemToDockIfNeeded()
     {
         if (dndItem.currentlyDraggedId === "") {
@@ -495,14 +529,16 @@ InputEventItem {
                 dndItem.DQuickDrag.currentDragPoint.x + width * dndItem.dragHotSpotScaleX,
                 dndItem.DQuickDrag.currentDragPoint.y + height * dndItem.dragHotSpotScaleY
             )
+            readonly property rect dockRect: root.descaledDockRect()
             readonly property bool overDock: root.expandedRectContains(
-                root.descaledDockRect(),
+                dockRect,
                 dragHotSpotGlobal,
                 Math.max(12, DesktopIntegration.dockSpacing)
             )
-            readonly property real visualSize: overDock
-                ? Math.min(Math.max(1, dndItem.mergeSize), root.dockDragVisualSize())
-                : Math.max(1, dndItem.mergeSize)
+            readonly property real fullVisualSize: Math.max(1, dndItem.mergeSize)
+            readonly property real dockVisualSize: Math.min(fullVisualSize, root.dockDragVisualSize())
+            readonly property real dockScaleProgress: root.dockDragScaleProgress(dockRect, dragHotSpotGlobal)
+            readonly property real visualSize: root.interpolatePosition(fullVisualSize, dockVisualSize, dockScaleProgress)
 
             onDragHotSpotGlobalChanged: {
                 dndItem.lastDragHotSpotGlobal = dragHotSpotGlobal

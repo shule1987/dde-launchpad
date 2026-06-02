@@ -74,6 +74,7 @@ FocusScope {
     property int activeAnimationSpeedScale: 1
     property real sourceIconScaleFactor: 1.0
     property bool pendingNameEdit: false
+    property bool contentLayoutReady: false
     readonly property real iconBlurLayerOpacity: 0.5
     readonly property int sourcePreviewGridSize: 3
     readonly property int sourcePreviewMaxIcons: sourcePreviewGridSize * sourcePreviewGridSize
@@ -123,6 +124,11 @@ FocusScope {
     function requestFolderNameEdit() {
         pendingNameEdit = true
         Qt.callLater(beginFolderNameEdit)
+    }
+
+    function scheduleContentLayoutReady() {
+        contentLayoutReady = false
+        contentLayoutReadyTimer.restart()
     }
 
     readonly property int openDuration: 178
@@ -289,6 +295,7 @@ FocusScope {
         panelRadius = sourceCornerRadius
         iconMorphProgress = 0
         iconMorphClosing = false
+        contentLayoutReady = false
         backgroundMorphProgress = 0
         externalDimProgress = 0
         contentRevealProgress = 0
@@ -361,6 +368,7 @@ FocusScope {
         panelRadius = sourceCornerRadius
         iconMorphProgress = 0
         iconMorphClosing = false
+        contentLayoutReady = false
         pendingOpenAfterSnapshot = false
         backgroundSnapshotUrl = ""
         pendingOpenSnapshotCount = 0
@@ -545,8 +553,30 @@ FocusScope {
             }
             root.pendingOpenAfterSnapshot = false
             root.visible = true
+            root.scheduleContentLayoutReady()
             openAnimation.restart()
             root.forceActiveFocus()
+        }
+    }
+
+    Timer {
+        id: contentLayoutReadyTimer
+        interval: root.animationDuration(34)
+        repeat: false
+        onTriggered: {
+            if (!root.visible || root.currentFolderId === -1) {
+                root.contentLayoutReady = false
+                return
+            }
+
+            if (!folderLoader.active
+                    || folderLoader.status === Loader.Null
+                    || folderLoader.status === Loader.Loading) {
+                restart()
+                return
+            }
+
+            root.contentLayoutReady = true
         }
     }
 
@@ -1045,14 +1075,15 @@ FocusScope {
             id: folderLoader
 
             active: root.currentFolderId !== -1
-                    && (root.contentRevealProgress > 0 || closeAnimation.running)
+                    && (root.visible || closeAnimation.running)
             anchors.fill: parent
+            onLoaded: root.scheduleContentLayoutReady()
 
             sourceComponent: Item {
                 id: folderContentItem
 
                 anchors.fill: parent
-                opacity: root.contentRevealProgress
+                opacity: root.contentLayoutReady ? root.contentRevealProgress : 0
 
                 readonly property int folderPageCount: folderPagesView.count
 
