@@ -129,6 +129,13 @@ Control {
 
     function clampedDragHotSpot(mouseX, mouseY) {
         const iconPoint = inputLayer.mapToItem(iconVisualItem, mouseX, mouseY)
+        if (iconPoint.x < 0
+                || iconPoint.x > iconVisualItem.width
+                || iconPoint.y < 0
+                || iconPoint.y > iconVisualItem.height) {
+            return Qt.point(iconVisualItem.width / 2, iconVisualItem.height / 2)
+        }
+
         return Qt.point(
             Math.max(0, Math.min(iconVisualItem.width, iconPoint.x)),
             Math.max(0, Math.min(iconVisualItem.height, iconPoint.y))
@@ -552,15 +559,25 @@ Control {
                 root.proxyDragPending = false
                 dndItem.currentlyDraggedId = root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]
                 dndItem.currentlyDraggedIconName = root.iconSource
-                dndItem.Drag.hotSpot = root.Drag.hotSpot
                 dndItem.Drag.mimeData = root.Drag.mimeData
                 dndItem.Drag.keys = Object.keys(root.Drag.mimeData)
                 dndItem.Drag.supportedActions = Qt.MoveAction
                 dndItem.mergeSize = Math.min(iconVisualItem.width, iconVisualItem.height)
                 dndItem.width = Math.max(1, iconVisualItem.width)
                 dndItem.height = Math.max(1, iconVisualItem.height)
-                dndItem.Drag.imageSource = root.Drag.imageSource
-                dndItem.Drag.dragType = root.Drag.Internal
+                if (typeof dndItem.dragImageSource !== "undefined") {
+                    dndItem.dragImageSource = root.Drag.imageSource
+                }
+                const useQuickDragOverlay = typeof dndItem.useQuickDragOverlay !== "undefined"
+                    && dndItem.useQuickDragOverlay
+                const useExternalDockDrag = typeof dndItem.externalDockDragEnabled !== "undefined"
+                    && dndItem.externalDockDragEnabled
+                if (typeof dndItem.visualDragHotSpot !== "undefined") {
+                    dndItem.visualDragHotSpot = root.Drag.hotSpot
+                }
+                dndItem.Drag.hotSpot = useQuickDragOverlay ? Qt.point(0, 0) : root.Drag.hotSpot
+                dndItem.Drag.imageSource = useQuickDragOverlay ? "" : root.Drag.imageSource
+                dndItem.Drag.dragType = useExternalDockDrag ? root.Drag.Automatic : root.Drag.Internal
                 updateProxyDragPosition()
                 Qt.callLater(function() {
                     if (dragHandler.active && dndItem.currentlyDraggedId === root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]) {

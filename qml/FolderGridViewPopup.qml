@@ -354,23 +354,23 @@ Popup {
                             id: folderDndMovePageTimer
                             interval: 1000
                             onTriggered: {
-                                if (parent.pageIntent > 0) {
+                                if (folderPageDropArea.pageIntent > 0) {
                                     let isLastPage = (folderPagesView.currentIndex === folderPagesView.count - 1)
                                     if (isLastPage && !folderPageDropArea.createdEmptyPage) {
                                         let newPageIndex = ItemArrangementProxyModel.creatEmptyPage(folderLoader.currentFolderId)
                                         folderPageDropArea.createdEmptyPage = true
                                         folderPagesView.setCurrentIndex(newPageIndex)
-                                        parent.pageIntent = 0
+                                        folderPageDropArea.pageIntent = 0
                                         return
                                     } else {
                                         incrementPageIndex(folderPagesView)
                                     }
-                                } else if (parent.pageIntent < 0) {
+                                } else if (folderPageDropArea.pageIntent < 0) {
                                     decrementPageIndex(folderPagesView)
                                 }
-                                parent.pageIntent = 0
+                                folderPageDropArea.pageIntent = 0
                                 if (folderPagesView.currentIndex !== 0) {
-                                    parent.checkDragMove()
+                                    folderPageDropArea.checkDragMove()
                                 }
                             }
                         }

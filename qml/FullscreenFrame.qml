@@ -8,6 +8,7 @@ import QtQuick.Window 2.15
 import QtQuick.Effects
 import QtQuick.Shapes
 import org.deepin.dtk 1.0
+import org.deepin.ds 1.0
 
 import org.deepin.launchpad 1.0
 import org.deepin.launchpad.models 1.0
@@ -349,6 +350,61 @@ InputEventItem {
         }
     }
 
+    function descaledDockRect()
+    {
+        const ratio = Math.max(1, Screen.devicePixelRatio || 1)
+        const rect = DesktopIntegration.dockGeometry
+        return Qt.rect(rect.x / ratio, rect.y / ratio, rect.width / ratio, rect.height / ratio)
+    }
+
+    function expandedRectContains(rect, point, padding)
+    {
+        return point.x >= rect.x - padding
+            && point.x <= rect.x + rect.width + padding
+            && point.y >= rect.y - padding
+            && point.y <= rect.y + rect.height + padding
+    }
+
+    function dockTaskbarIconSize()
+    {
+        const dock = DS.applet("org.deepin.ds.dock")
+        if (dock && dock.rootObject && dock.rootObject.dockItemMaxSize !== undefined) {
+            return Math.max(16, Math.round(dock.rootObject.dockItemMaxSize * 9 / 14))
+        }
+
+        const dockRect = descaledDockRect()
+        const dockThickness = isHorizontalDock ? dockRect.height : dockRect.width
+        return Math.max(32, Math.min(72, Math.round(dockThickness * 9 / 14)))
+    }
+
+    function dockDragVisualSize()
+    {
+        return Math.max(16, Math.round(dockTaskbarIconSize() * 1.08))
+    }
+
+    function sendDraggedItemToDockIfNeeded()
+    {
+        if (dndItem.currentlyDraggedId === "") {
+            return false
+        }
+
+        const dockRect = descaledDockRect()
+        if (dockRect.width <= 0 || dockRect.height <= 0) {
+            return false
+        }
+
+        const hotSpotGlobal = dndItem.hasLastDragHotSpotGlobal
+            ? dndItem.lastDragHotSpotGlobal
+            : dndItem.mapToGlobal(dndItem.Drag.hotSpot.x, dndItem.Drag.hotSpot.y)
+        if (!expandedRectContains(dockRect, hotSpotGlobal, Math.max(12, DesktopIntegration.dockSpacing))) {
+            return false
+        }
+
+        DesktopIntegration.sendToDock(dndItem.currentlyDraggedId)
+        LauncherController.visible = false
+        return true
+    }
+
     Label {
         id: dndItem
         visible: dragVisualActive || DebugHelper.qtDebugEnabled
@@ -369,27 +425,101 @@ InputEventItem {
         property real mergeAnimStartY: 0
         property string liveReorderKey: ""
         property real mergeSize: 0
+        property url dragImageSource: ""
+        property bool hasLastDragHotSpotGlobal: false
+        property point lastDragHotSpotGlobal: Qt.point(0, 0)
+        property point visualDragHotSpot: Qt.point(width / 2, height / 2)
+        readonly property bool externalDockDragEnabled: true
+        readonly property bool useQuickDragOverlay: Qt.platform.pluginName === "xcb"
+                                                   || Qt.platform.pluginName === "dxcb"
+        readonly property real dragHotSpotScaleX: width > 0 ? Math.max(0, Math.min(1, visualDragHotSpot.x / width)) : 0.5
+        readonly property real dragHotSpotScaleY: height > 0 ? Math.max(0, Math.min(1, visualDragHotSpot.y / height)) : 0.5
 
         signal dragEnded()
+
+        function quickDragHotSpotGlobal()
+        {
+            return Qt.point(
+                DQuickDrag.currentDragPoint.x + width * dragHotSpotScaleX,
+                DQuickDrag.currentDragPoint.y + height * dragHotSpotScaleY
+            )
+        }
+
+        Drag.source: dndItem
+        DQuickDrag.hotSpotScale: Qt.size(dragHotSpotScaleX, dragHotSpotScaleY)
+        DQuickDrag.active: Drag.active && useQuickDragOverlay
+        DQuickDrag.overlay: dragOverlayComponent
 
         Drag.onActiveChanged: {
             if (Drag.active) {
                 text = "Dragging " + currentlyDraggedId
             } else {
+                sendDraggedItemToDockIfNeeded()
                 currentlyDraggedId = ""
                 currentlyDraggedIconName = ""
                 liveReorderKey = ""
+                dragImageSource = ""
+                hasLastDragHotSpotGlobal = false
+                visualDragHotSpot = Qt.point(width / 2, height / 2)
                 dragEnded()
+            }
+        }
+
+        Connections {
+            target: dndItem.DQuickDrag
+            function onCurrentDragPointChanged() {
+                dndItem.lastDragHotSpotGlobal = dndItem.quickDragHotSpotGlobal()
+                dndItem.hasLastDragHotSpotGlobal = true
             }
         }
 
         Image {
             anchors.fill: parent
-            visible: dndItem.dragVisualActive && source != ""
-            source: dndItem.Drag.imageSource
+            visible: dndItem.dragVisualActive && source != "" && !dndItem.DQuickDrag.isDragging
+            source: dndItem.dragImageSource
             fillMode: Image.PreserveAspectFit
             smooth: true
             mipmap: true
+        }
+    }
+
+    Component {
+        id: dragOverlayComponent
+
+        QuickDragWindow {
+            id: dragOverlayWindow
+            objectName: "FullscreenDragOverlayWindow"
+            width: Math.max(1, dndItem.width)
+            height: Math.max(1, dndItem.height)
+            readonly property point dragHotSpotGlobal: Qt.point(
+                dndItem.DQuickDrag.currentDragPoint.x + width * dndItem.dragHotSpotScaleX,
+                dndItem.DQuickDrag.currentDragPoint.y + height * dndItem.dragHotSpotScaleY
+            )
+            readonly property bool overDock: root.expandedRectContains(
+                root.descaledDockRect(),
+                dragHotSpotGlobal,
+                Math.max(12, DesktopIntegration.dockSpacing)
+            )
+            readonly property real visualSize: overDock
+                ? Math.min(Math.max(1, dndItem.mergeSize), root.dockDragVisualSize())
+                : Math.max(1, dndItem.mergeSize)
+
+            onDragHotSpotGlobalChanged: {
+                dndItem.lastDragHotSpotGlobal = dragHotSpotGlobal
+                dndItem.hasLastDragHotSpotGlobal = true
+            }
+
+            Image {
+                width: dragOverlayWindow.visualSize
+                height: dragOverlayWindow.visualSize
+                x: dragOverlayWindow.width * dndItem.dragHotSpotScaleX - width * dndItem.dragHotSpotScaleX
+                y: dragOverlayWindow.height * dndItem.dragHotSpotScaleY - height * dndItem.dragHotSpotScaleY
+                source: dndItem.dragImageSource
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                mipmap: true
+                opacity: 0.92
+            }
         }
     }
 
@@ -665,7 +795,7 @@ InputEventItem {
 
                             const dragId = Helper.dragDesktopId(drop)
                             dropOnPage(dragId, "internal/folders/0", contentView.pageView.currentIndex)
-                            parent.pageIntent = 0
+                            dropArea.pageIntent = 0
                         }
 
                         onExited: {
@@ -685,23 +815,23 @@ InputEventItem {
                             interval: 1000
 
                             onTriggered: {
-                                if (parent.pageIntent > 0) {
+                                if (dropArea.pageIntent > 0) {
                                     const isLastPage = contentView.pageView.currentIndex === contentView.pageView.count - 1
                                     if (isLastPage && !dropArea.createdEmptyPage) {
                                         const newPageIndex = ItemArrangementProxyModel.creatEmptyPage()
                                         dropArea.createdEmptyPage = true
                                         contentView.pageView.setCurrentIndex(newPageIndex)
-                                        parent.pageIntent = 0
+                                        dropArea.pageIntent = 0
                                         return
                                     }
                                     incrementPageIndex(contentView.pageView)
-                                } else if (parent.pageIntent < 0) {
+                                } else if (dropArea.pageIntent < 0) {
                                     decrementPageIndex(contentView.pageView)
                                 }
 
-                                parent.pageIntent = 0
+                                dropArea.pageIntent = 0
                                 if (contentView.pageView.currentIndex !== 0) {
-                                    parent.checkDragMove()
+                                    dropArea.checkDragMove()
                                 }
                             }
                         }

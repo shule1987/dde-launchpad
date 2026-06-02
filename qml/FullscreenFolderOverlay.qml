@@ -1269,23 +1269,23 @@ FocusScope {
                                 interval: 1000
 
                                 onTriggered: {
-                                    if (parent.pageIntent > 0) {
+                                    if (folderPageDropArea.pageIntent > 0) {
                                         const isLastPage = folderPagesView.currentIndex === folderPagesView.count - 1
                                         if (isLastPage && !folderPageDropArea.createdEmptyPage) {
                                             const newPageIndex = ItemArrangementProxyModel.creatEmptyPage(root.currentFolderId)
                                             folderPageDropArea.createdEmptyPage = true
                                             folderPagesView.setCurrentIndex(newPageIndex)
-                                            parent.pageIntent = 0
+                                            folderPageDropArea.pageIntent = 0
                                             return
                                         }
                                         incrementPageIndex(folderPagesView)
-                                    } else if (parent.pageIntent < 0) {
+                                    } else if (folderPageDropArea.pageIntent < 0) {
                                         decrementPageIndex(folderPagesView)
                                     }
 
-                                    parent.pageIntent = 0
+                                    folderPageDropArea.pageIntent = 0
                                     if (folderPagesView.currentIndex !== 0) {
-                                        parent.checkDragMove()
+                                        folderPageDropArea.checkDragMove()
                                     }
                                 }
                             }
