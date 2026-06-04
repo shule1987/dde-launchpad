@@ -402,7 +402,7 @@ QtObject {
         // visibility: Window.FullScreen
         flags: {
             if (DebugHelper.useRegularWindow) return Qt.Window
-            return (Qt.FramelessWindowHint | Qt.Tool)
+            return (Qt.FramelessWindowHint | Qt.Window)
         }
 
         DWindow.enabled: !DebugHelper.useRegularWindow
