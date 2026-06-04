@@ -1,3 +1,9 @@
+dde-launchpad (2.2.2) unstable; urgency=medium
+
+  * fix: keep fullscreen launchpad below dock shell layer.
+
+ -- shule1987 <shule1987@qq.com>  Thu, 04 Jun 2026 08:05:54 +0800
+
 dde-launchpad (2.2.1) unstable; urgency=medium
 
   * chore: bump package version.
