@@ -73,13 +73,30 @@ QtObject {
         return ""
     }
 
+    function pointComponent(point, component) {
+        if (!point) {
+            return 0
+        }
+
+        const value = point[component]
+        if (typeof value === "number") {
+            return value
+        }
+
+        if (typeof value === "function") {
+            return value.call(point)
+        }
+
+        return 0
+    }
+
     function wheelDeltaX(wheel) {
         if (!wheel) {
             return 0
         }
 
-        const pixelX = wheel.pixelDelta ? wheel.pixelDelta.x : 0
-        const angleX = wheel.angleDelta ? wheel.angleDelta.x / 8 : 0
+        const pixelX = pointComponent(wheel.pixelDelta, "x")
+        const angleX = pointComponent(wheel.angleDelta, "x") / 8
         return pixelX !== 0 ? pixelX : angleX
     }
 
@@ -88,8 +105,8 @@ QtObject {
             return 0
         }
 
-        const pixelY = wheel.pixelDelta ? wheel.pixelDelta.y : 0
-        const angleY = wheel.angleDelta ? wheel.angleDelta.y / 8 : 0
+        const pixelY = pointComponent(wheel.pixelDelta, "y")
+        const angleY = pointComponent(wheel.angleDelta, "y") / 8
         return pixelY !== 0 ? pixelY : angleY
     }
 

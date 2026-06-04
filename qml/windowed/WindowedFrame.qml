@@ -17,11 +17,22 @@ InputEventItem {
     id: baseLayer
     objectName: "WindowedFrame-BaseLayer"
     inputMethodSource: folderGridViewPopup.folderNameEditing ? null : bottomBar.searchEdit
+    wheelEventForwardingEnabled: folderGridViewPopup.visible
 
     visible: true
     focus: true
 
     KeyNavigation.tab: appGridLoader.item
+
+    onWheelReceived: function(position, pixelDelta, angleDelta, modifiers) {
+        if (!LauncherController.visible || LauncherController.currentFrame !== "WindowedFrame") {
+            return
+        }
+
+        if (folderGridViewPopup.visible) {
+            folderGridViewPopup.handleWheelDeltas(pixelDelta, angleDelta, modifiers)
+        }
+    }
 
     Shortcut {
         context: Qt.ApplicationShortcut

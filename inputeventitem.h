@@ -15,11 +15,14 @@ class InputEventItem : public QQuickItem
     Q_OBJECT
     QML_ELEMENT
     Q_PROPERTY(QQuickItem* inputMethodSource READ inputMethodSource WRITE setInputMethodSource NOTIFY inputMethodSourceChanged)
+    Q_PROPERTY(bool wheelEventForwardingEnabled READ wheelEventForwardingEnabled WRITE setWheelEventForwardingEnabled NOTIFY wheelEventForwardingEnabledChanged)
 public:
     InputEventItem();
 
     QQuickItem* inputMethodSource() const;
     void setInputMethodSource(QQuickItem* source);
+    bool wheelEventForwardingEnabled() const;
+    void setWheelEventForwardingEnabled(bool enabled);
 
     Q_INVOKABLE void activateWindowForInput();
     Q_INVOKABLE void releaseWindowInput();
@@ -34,6 +37,7 @@ protected:
 signals:
     void inputReceived(const QString &input);
     void inputMethodSourceChanged();
+    void wheelEventForwardingEnabledChanged();
     void pointerPressed(const QPointF &position, int button, int modifiers);
     void pointerReleased(const QPointF &position, int button, int modifiers);
     void wheelReceived(const QPointF &position, const QPoint &pixelDelta, const QPoint &angleDelta, int modifiers);
@@ -42,6 +46,7 @@ private:
     bool handleMouseEvent(QEvent::Type type, const QPointF &position, Qt::MouseButton button, Qt::KeyboardModifiers modifiers);
     bool hasEditableFocus() const;
     QQuickItem* m_inputMethodSource = nullptr;
+    bool m_wheelEventForwardingEnabled = false;
 };
 
 #endif // INPUTEVENTITEM_H

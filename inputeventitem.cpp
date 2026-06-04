@@ -40,6 +40,26 @@ bool isEditableTextItem(QQuickItem *item)
     const QVariant readOnly = item->property("readOnly");
     return !readOnly.isValid() || !readOnly.toBool();
 }
+
+bool isEffectivelyVisible(QQuickItem *item)
+{
+    for (auto *current = item; current; current = current->parentItem()) {
+        if (!current->isVisible() || !current->isEnabled())
+            return false;
+    }
+    return true;
+}
+
+QQuickWindow *quickWindowForEventObject(QObject *obj)
+{
+    if (auto *targetWindow = qobject_cast<QQuickWindow *>(obj))
+        return targetWindow;
+
+    if (auto *targetItem = qobject_cast<QQuickItem *>(obj))
+        return targetItem->window();
+
+    return nullptr;
+}
 }
 
 InputEventItem::InputEventItem()
@@ -60,6 +80,20 @@ void InputEventItem::setInputMethodSource(QQuickItem* source)
         m_inputMethodSource = source;
         Q_EMIT inputMethodSourceChanged();
     }
+}
+
+bool InputEventItem::wheelEventForwardingEnabled() const
+{
+    return m_wheelEventForwardingEnabled;
+}
+
+void InputEventItem::setWheelEventForwardingEnabled(bool enabled)
+{
+    if (m_wheelEventForwardingEnabled == enabled)
+        return;
+
+    m_wheelEventForwardingEnabled = enabled;
+    Q_EMIT wheelEventForwardingEnabledChanged();
 }
 
 void InputEventItem::activateWindowForInput()
@@ -99,14 +133,9 @@ QVariant InputEventItem::inputMethodQuery(Qt::InputMethodQuery query) const
 }
 
 bool InputEventItem::eventFilter(QObject *obj, QEvent *event) {
-    if (event->type() == QEvent::Wheel && window()) {
-        auto *targetWindow = qobject_cast<QQuickWindow *>(obj);
-        if (!targetWindow) {
-            if (auto *targetItem = qobject_cast<QQuickItem *>(obj))
-                targetWindow = targetItem->window();
-        }
-
-        if (targetWindow == window()) {
+    if (event->type() == QEvent::Wheel && m_wheelEventForwardingEnabled && window()) {
+        auto *targetWindow = quickWindowForEventObject(obj);
+        if (targetWindow == window() && targetWindow->isVisible() && isEffectivelyVisible(this)) {
             auto *wheelEvent = static_cast<QWheelEvent *>(event);
             Q_EMIT wheelReceived(wheelEvent->position(),
                                  wheelEvent->pixelDelta(),

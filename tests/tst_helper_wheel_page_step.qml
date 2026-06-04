@@ -17,6 +17,20 @@ TestCase {
         }
     }
 
+    function methodPoint(x, y) {
+        return {
+            x: function() { return x },
+            y: function() { return y }
+        }
+    }
+
+    function methodWheel(pixelX, pixelY, angleX, angleY) {
+        return {
+            pixelDelta: methodPoint(pixelX, pixelY),
+            angleDelta: methodPoint(angleX, angleY)
+        }
+    }
+
     function test_touchpadHorizontalPixelDelta() {
         compare(Helper.wheelPageStep(wheel(18, 0, 0, 0)), 1)
         compare(Helper.wheelPageStep(wheel(-18, 0, 0, 0)), -1)
@@ -43,5 +57,18 @@ TestCase {
         compare(Helper.wheelPageStep(wheel(24, 12, 0, 0)), 1)
         compare(Helper.wheelPageStep(wheel(12, 24, 0, 0)), -1)
         compare(Helper.wheelPageStep(wheel(0, 0, 0, 0)), 0)
+    }
+
+    function test_functionStylePointComponents() {
+        compare(Helper.wheelPageStep(methodWheel(18, 0, 0, 0)), 1)
+        compare(Helper.wheelPageStep(methodWheel(0, -18, 0, 120)), 1)
+        compare(Helper.wheelPageStep(methodWheel(0, 0, 0, 120)), -1)
+    }
+
+    function test_missingPointComponentsFallBackToZero() {
+        compare(Helper.wheelPageStep({
+            pixelDelta: {},
+            angleDelta: Qt.point(0, -120)
+        }), 1)
     }
 }

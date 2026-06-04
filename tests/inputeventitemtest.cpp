@@ -21,7 +21,9 @@ private slots:
     void printableKeyStartsSearchWhenNoEditableItemHasFocus();
     void printableKeyDoesNotStealEditableFocus();
     void inputMethodCommitDoesNotStartSearchWhileEditingText();
+    void windowWheelEventIsIgnoredByDefault();
     void windowWheelEventIsForwardedWithPixelDelta();
+    void hiddenItemDoesNotForwardWindowWheelEvent();
 };
 
 void TestInputEventItem::printableKeyStartsSearchWhenNoEditableItemHasFocus()
@@ -114,6 +116,7 @@ void TestInputEventItem::windowWheelEventIsForwardedWithPixelDelta()
 
     root.setParentItem(window.contentItem());
     root.setSize(QSizeF(200, 200));
+    root.setWheelEventForwardingEnabled(true);
 
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
@@ -135,6 +138,58 @@ void TestInputEventItem::windowWheelEventIsForwardedWithPixelDelta()
     QCOMPARE(arguments.at(2).toPoint(), QPoint(0, 0));
     QCOMPARE(arguments.at(3).toInt(), int(Qt::NoModifier));
     QVERIFY(wheelEvent.isAccepted());
+}
+
+void TestInputEventItem::windowWheelEventIsIgnoredByDefault()
+{
+    QQuickWindow window;
+    InputEventItem root;
+    QSignalSpy wheelSpy(&root, &InputEventItem::wheelReceived);
+
+    root.setParentItem(window.contentItem());
+    root.setSize(QSizeF(200, 200));
+
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QWheelEvent wheelEvent(QPointF(40, 50),
+                           QPointF(140, 150),
+                           QPoint(18, 0),
+                           QPoint(0, 0),
+                           Qt::NoButton,
+                           Qt::NoModifier,
+                           Qt::ScrollUpdate,
+                           false);
+    QCoreApplication::sendEvent(&window, &wheelEvent);
+
+    QCOMPARE(wheelSpy.count(), 0);
+}
+
+void TestInputEventItem::hiddenItemDoesNotForwardWindowWheelEvent()
+{
+    QQuickWindow window;
+    InputEventItem root;
+    QSignalSpy wheelSpy(&root, &InputEventItem::wheelReceived);
+
+    root.setParentItem(window.contentItem());
+    root.setSize(QSizeF(200, 200));
+    root.setVisible(false);
+    root.setWheelEventForwardingEnabled(true);
+
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QWheelEvent wheelEvent(QPointF(40, 50),
+                           QPointF(140, 150),
+                           QPoint(18, 0),
+                           QPoint(0, 0),
+                           Qt::NoButton,
+                           Qt::NoModifier,
+                           Qt::ScrollUpdate,
+                           false);
+    QCoreApplication::sendEvent(&window, &wheelEvent);
+
+    QCOMPARE(wheelSpy.count(), 0);
 }
 
 int main(int argc, char **argv)

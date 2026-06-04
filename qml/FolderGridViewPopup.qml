@@ -57,6 +57,12 @@ Popup {
         Qt.callLater(beginFolderNameEdit)
     }
 
+    function handleWheelDeltas(pixelDelta, angleDelta, modifiers) {
+        if (innerItem && typeof innerItem.handleWheelDeltas === "function") {
+            innerItem.handleWheelDeltas(pixelDelta, angleDelta, modifiers)
+        }
+    }
+
     property var folderNameFont: DTK.fontManager.t2
     required property point centerPosition
     readonly property bool isWindowedMode: LauncherController.currentFrame === "WindowedFrame"
@@ -140,6 +146,10 @@ Popup {
         sourceComponent: Control {
             function beginNameEdit() {
                 contentRoot.beginNameEdit()
+            }
+
+            function handleWheelDeltas(pixelDelta, angleDelta, modifiers) {
+                folderPagingArea.handleWheelDeltas(pixelDelta, angleDelta, modifiers)
             }
 
             // Ensure drop won't fallthough the Popup.
@@ -286,6 +296,15 @@ Popup {
                             folderWheelPageDelay.start()
                             incrementFolderPage()
                         }
+                    }
+
+                    function handleWheelDeltas(pixelDelta, angleDelta, modifiers) {
+                        handleFolderWheel({
+                            pixelDelta: pixelDelta,
+                            angleDelta: angleDelta,
+                            modifiers: modifiers,
+                            accepted: false
+                        })
                     }
 
                     // 用于鼠标滚轮滚动时接收焦点，使 GridView 失去 activeFocus

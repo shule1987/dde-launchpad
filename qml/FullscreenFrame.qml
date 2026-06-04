@@ -18,6 +18,7 @@ InputEventItem {
     anchors.fill: parent
     objectName: "FullscreenFrame-InputEventItem"
     inputMethodSource: folderGridViewPopup.folderNameEditing ? null : footer.searchEdit
+    wheelEventForwardingEnabled: true
     focus: true
 
     property bool dockAreaReservedByWindow: false
