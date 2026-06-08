@@ -112,6 +112,23 @@ void ItemsPage::appendPage(const QStringList items)
     emit sigPageAdded(first, m_pages.count() - 1);
 }
 
+void ItemsPage::setPages(const QList<QStringList> &pages)
+{
+    const int oldCount = m_pages.count();
+    m_pages = pages;
+
+    if (oldCount == m_pages.count()) {
+        return;
+    }
+
+    emit pageCountChanged();
+    if (oldCount < m_pages.count()) {
+        emit sigPageAdded(oldCount, m_pages.count() - 1);
+    } else {
+        emit sigPageRemoved(m_pages.count(), oldCount - 1);
+    }
+}
+
 // find a page with empty place and append the item to that page.
 void ItemsPage::appendItem(const QString id, int page)
 {

@@ -442,6 +442,30 @@ InputEventItem {
         return true
     }
 
+    function currentGridPageItem()
+    {
+        if (!contentView || !contentView.pageView || !contentView.pageView.currentItem) {
+            return null
+        }
+
+        return contentView.pageView.currentItem
+    }
+
+    function currentPageContainsGridDrop(drop)
+    {
+        const pageItem = currentGridPageItem()
+        if (!pageItem) {
+            return false
+        }
+
+        if (typeof pageItem.containsGridDropAreaAt !== "function") {
+            return false
+        }
+
+        const point = pageItem.mapFromItem(dropArea, drop.x, drop.y)
+        return pageItem.containsGridDropAreaAt(point.x, point.y)
+    }
+
     Label {
         id: dndItem
         visible: dragVisualActive || DebugHelper.qtDebugEnabled
@@ -461,8 +485,16 @@ InputEventItem {
         property real mergeAnimStartX: 0
         property real mergeAnimStartY: 0
         property string liveReorderKey: ""
+        property bool arrangementDropCommitted: false
         property real mergeSize: 0
         property url dragImageSource: ""
+        property bool returnAnimationRunning: false
+        property bool hasReturnTarget: false
+        property real returnTargetX: 0
+        property real returnTargetY: 0
+        property real returnTargetWidth: 1
+        property real returnTargetHeight: 1
+        property int returnAnimationDuration: 240
         property bool hasLastDragHotSpotGlobal: false
         property point lastDragHotSpotGlobal: Qt.point(0, 0)
         property point visualDragHotSpot: Qt.point(width / 2, height / 2)
@@ -482,6 +514,64 @@ InputEventItem {
             )
         }
 
+        function rememberReturnTarget(item)
+        {
+            if (!item || !dndItem.parent) {
+                hasReturnTarget = false
+                return
+            }
+
+            const targetPoint = item.mapToItem(dndItem.parent, 0, 0)
+            returnTargetX = targetPoint.x
+            returnTargetY = targetPoint.y
+            returnTargetWidth = Math.max(1, item.width)
+            returnTargetHeight = Math.max(1, item.height)
+            hasReturnTarget = true
+        }
+
+        function clearDragState()
+        {
+            currentlyDraggedId = ""
+            currentlyDraggedIconName = ""
+            liveReorderKey = ""
+            dragImageSource = ""
+            hasLastDragHotSpotGlobal = false
+            visualDragHotSpot = Qt.point(width / 2, height / 2)
+            hasReturnTarget = false
+            returnAnimationRunning = false
+        }
+
+        function startReturnAnimationIfNeeded(sentToDock)
+        {
+            if (sentToDock
+                    || arrangementDropCommitted
+                    || !hasReturnTarget
+                    || dragImageSource == "") {
+                return false
+            }
+
+            const hotSpotGlobal = hasLastDragHotSpotGlobal
+                ? lastDragHotSpotGlobal
+                : mapToGlobal(width * dragHotSpotScaleX, height * dragHotSpotScaleY)
+            const topLeftGlobal = Qt.point(
+                hotSpotGlobal.x - width * dragHotSpotScaleX,
+                hotSpotGlobal.y - height * dragHotSpotScaleY
+            )
+            if (dndItem.parent && typeof dndItem.parent.mapFromGlobal === "function") {
+                const topLeft = dndItem.parent.mapFromGlobal(topLeftGlobal.x, topLeftGlobal.y)
+                x = topLeft.x
+                y = topLeft.y
+            }
+
+            const dx = returnTargetX - x
+            const dy = returnTargetY - y
+            const distance = Math.sqrt(dx * dx + dy * dy)
+            returnAnimationDuration = Math.max(180, Math.min(340, Math.round(distance * 0.42)))
+            returnAnimationRunning = true
+            returnAnimation.restart()
+            return true
+        }
+
         Drag.source: dndItem
         DQuickDrag.hotSpotScale: Qt.size(dragHotSpotScaleX, dragHotSpotScaleY)
         DQuickDrag.active: Drag.active && useQuickDragOverlay
@@ -489,15 +579,17 @@ InputEventItem {
 
         Drag.onActiveChanged: {
             if (Drag.active) {
+                arrangementDropCommitted = false
                 text = "Dragging " + currentlyDraggedId
             } else {
-                sendDraggedItemToDockIfNeeded()
-                currentlyDraggedId = ""
-                currentlyDraggedIconName = ""
-                liveReorderKey = ""
-                dragImageSource = ""
-                hasLastDragHotSpotGlobal = false
-                visualDragHotSpot = Qt.point(width / 2, height / 2)
+                if (returnAnimationRunning || currentlyDraggedId === "") {
+                    return
+                }
+
+                const sentToDock = sendDraggedItemToDockIfNeeded()
+                if (!startReturnAnimationIfNeeded(sentToDock)) {
+                    clearDragState()
+                }
                 dragEnded()
             }
         }
@@ -517,6 +609,41 @@ InputEventItem {
             fillMode: Image.PreserveAspectFit
             smooth: true
             mipmap: true
+        }
+
+        ParallelAnimation {
+            id: returnAnimation
+            onStopped: dndItem.clearDragState()
+
+            XAnimator {
+                target: dndItem
+                to: dndItem.returnTargetX
+                duration: dndItem.returnAnimationDuration * LauncherController.animationSpeedScale
+                easing.type: Easing.OutQuart
+            }
+
+            YAnimator {
+                target: dndItem
+                to: dndItem.returnTargetY
+                duration: dndItem.returnAnimationDuration * LauncherController.animationSpeedScale
+                easing.type: Easing.OutQuart
+            }
+
+            NumberAnimation {
+                target: dndItem
+                property: "width"
+                to: dndItem.returnTargetWidth
+                duration: dndItem.returnAnimationDuration * LauncherController.animationSpeedScale
+                easing.type: Easing.OutQuart
+            }
+
+            NumberAnimation {
+                target: dndItem
+                property: "height"
+                to: dndItem.returnTargetHeight
+                duration: dndItem.returnAnimationDuration * LauncherController.animationSpeedScale
+                easing.type: Easing.OutQuart
+            }
         }
     }
 
@@ -563,7 +690,12 @@ InputEventItem {
     }
 
     function dropOnPage(dragId, dropFolderId, pageNumber) {
+        if (dragId === "") {
+            return
+        }
+
         dndItem.text = "drag " + dragId + " into " + dropFolderId + " at page " + pageNumber
+        dndItem.arrangementDropCommitted = true
         ItemArrangementProxyModel.commitDndOperation(dragId, dropFolderId, ItemArrangementProxyModel.DndJoin, pageNumber)
     }
 
@@ -833,6 +965,11 @@ InputEventItem {
                             }
 
                             const dragId = Helper.dragDesktopId(drop)
+                            if (dragId === "" || !root.currentPageContainsGridDrop(drop)) {
+                                dropArea.pageIntent = 0
+                                return
+                            }
+
                             dropOnPage(dragId, "internal/folders/0", contentView.pageView.currentIndex)
                             dropArea.pageIntent = 0
                         }
@@ -875,15 +1012,44 @@ InputEventItem {
                             }
                         }
 
+                        Timer {
+                            id: rollbackPreviewArrangementTimer
+                            interval: 16
+                            repeat: false
+                            onTriggered: {
+                                const pageItem = root.currentGridPageItem()
+                                const positions = pageItem && typeof pageItem.gridItemVisualPositions === "function"
+                                    ? pageItem.gridItemVisualPositions()
+                                    : null
+                                if (pageItem && typeof pageItem.setGridItemTransitionsEnabled === "function") {
+                                    pageItem.setGridItemTransitionsEnabled(false)
+                                }
+                                ItemArrangementProxyModel.cancelPreviewArrangement()
+                                if (pageItem && typeof pageItem.setGridItemTransitionsEnabled === "function") {
+                                    pageItem.setGridItemTransitionsEnabled(true)
+                                }
+                                if (pageItem && typeof pageItem.animateGridItemsFromPositions === "function") {
+                                    pageItem.animateGridItemsFromPositions(positions)
+                                }
+                                root.requestGlassSnapshotAfterSettled()
+                            }
+                        }
+
                         Connections {
                             target: dndItem
                             function onDragEnded() {
+                                rollbackPreviewArrangementTimer.stop()
                                 if (dropArea.createdEmptyPage) {
                                     baseLayer.tryToRemoveEmptyPage()
                                     dropArea.createdEmptyPage = false
                                 }
-                                ItemArrangementProxyModel.persistArrangement()
-                                root.requestGlassSnapshotAfterSettled()
+                                if (dndItem.arrangementDropCommitted) {
+                                    ItemArrangementProxyModel.persistArrangement()
+                                    root.requestGlassSnapshotAfterSettled()
+                                } else {
+                                    rollbackPreviewArrangementTimer.restart()
+                                }
+                                dndItem.arrangementDropCommitted = false
                             }
                         }
                     }
@@ -1278,6 +1444,7 @@ InputEventItem {
             }
             dropOnItemFn: function(dragId, dropId, op) {
                 dndItem.text = "drag " + dragId + " onto " + dropId + " with " + op
+                dndItem.arrangementDropCommitted = true
                 ItemArrangementProxyModel.commitDndOperation(dragId, dropId, op)
             }
             decrementPageIndexFn: function(pages) { decrementPageIndex(pages) }

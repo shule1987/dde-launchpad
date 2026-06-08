@@ -13,6 +13,8 @@
 #include <QStandardPaths>
 #include <QLoggingCategory>
 
+#include <utility>
+
 Q_DECLARE_LOGGING_CATEGORY(logModels)
 
 namespace {
@@ -106,21 +108,63 @@ void ItemArrangementProxyModel::bringToFront(const QString & id)
 
 void ItemArrangementProxyModel::commitDndOperation(const QString &dragId, const QString &dropId, const DndOperation op, int pageHint)
 {
-    performDndOperation(dragId, dropId, op, pageHint, true);
+    if (performDndOperation(dragId, dropId, op, pageHint, true)) {
+        clearPreviewArrangement();
+    }
 }
 
 void ItemArrangementProxyModel::previewDndOperation(const QString &dragId, const QString &dropId, const DndOperation op, int pageHint)
 {
+    capturePreviewArrangement();
     performDndOperation(dragId, dropId, op, pageHint, false);
 }
 
 void ItemArrangementProxyModel::persistArrangement()
 {
     if (!m_arrangementDirty) {
+        clearPreviewArrangement();
         return;
     }
 
     saveItemArrangementToUserData();
+    clearPreviewArrangement();
+}
+
+void ItemArrangementProxyModel::cancelPreviewArrangement()
+{
+    if (!m_hasPreviewArrangementSnapshot) {
+        return;
+    }
+
+    QSet<QString> snapshotFolderIds;
+    for (const PageSnapshot &snapshot : std::as_const(m_previewFolderSnapshots)) {
+        snapshotFolderIds.insert(snapshot.folderId);
+    }
+
+    for (int i = m_folderModel.rowCount() - 1; i >= 0; --i) {
+        const QString folderId = m_folderModel.index(i, 0).data(AppItem::DesktopIdRole).toString();
+        if (!snapshotFolderIds.contains(folderId)) {
+            removeFolder(QString(folderId).remove("internal/folders/"), false);
+        }
+    }
+
+    for (const PageSnapshot &snapshot : std::as_const(m_previewFolderSnapshots)) {
+        ItemsPage *page = m_folders.value(snapshot.folderId);
+        if (!page) {
+            page = createFolder(snapshot.folderId);
+        }
+        restorePage(page, snapshot);
+    }
+
+    restorePage(m_topLevel, m_previewTopLevelSnapshot);
+    m_arrangementDirty = false;
+    clearPreviewArrangement();
+
+    if (rowCount() > 0) {
+        emit dataChanged(index(0, 0), index(rowCount() - 1, 0), {
+            PageRole, IndexInPageRole, FolderIdNumberRole, IconsNameRole
+        });
+    }
 }
 
 // return new empty page index
@@ -504,6 +548,54 @@ void ItemArrangementProxyModel::saveItemArrangementToUserData()
 
     itemArrangementSettings.sync();
     m_arrangementDirty = false;
+}
+
+ItemArrangementProxyModel::PageSnapshot ItemArrangementProxyModel::snapshotPage(const QString &folderId, ItemsPage *page) const
+{
+    PageSnapshot snapshot;
+    snapshot.folderId = folderId;
+    if (!page) {
+        return snapshot;
+    }
+
+    snapshot.name = page->name();
+    for (int i = 0; i < page->pageCount(); ++i) {
+        snapshot.pages.append(page->items(i));
+    }
+
+    return snapshot;
+}
+
+void ItemArrangementProxyModel::capturePreviewArrangement()
+{
+    if (m_hasPreviewArrangementSnapshot) {
+        return;
+    }
+
+    m_previewTopLevelSnapshot = snapshotPage(QStringLiteral("internal/folders/0"), m_topLevel);
+    m_previewFolderSnapshots.clear();
+    for (int i = 0; i < m_folderModel.rowCount(); ++i) {
+        const QString folderId = m_folderModel.index(i, 0).data(AppItem::DesktopIdRole).toString();
+        m_previewFolderSnapshots.append(snapshotPage(folderId, m_folders.value(folderId)));
+    }
+    m_hasPreviewArrangementSnapshot = true;
+}
+
+void ItemArrangementProxyModel::clearPreviewArrangement()
+{
+    m_hasPreviewArrangementSnapshot = false;
+    m_previewTopLevelSnapshot = {};
+    m_previewFolderSnapshots.clear();
+}
+
+void ItemArrangementProxyModel::restorePage(ItemsPage *page, const PageSnapshot &snapshot)
+{
+    if (!page) {
+        return;
+    }
+
+    page->setName(snapshot.name);
+    page->setPages(snapshot.pages);
 }
 
 bool ItemArrangementProxyModel::performDndOperation(const QString &dragId, const QString &dropId, const DndOperation op, int pageHint, bool persist)

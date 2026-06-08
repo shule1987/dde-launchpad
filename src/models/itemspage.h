@@ -34,6 +34,7 @@ public:
 
     void appendEmptyPage();
     void appendPage(const QStringList items);
+    void setPages(const QList<QStringList> &pages);
     void appendItem(const QString id, int page = -1);
     void insertItem(const QString id, int page, int pos = 0);
     void insertItemToPage(const QString &id, int toPage);

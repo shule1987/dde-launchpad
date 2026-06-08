@@ -58,6 +58,7 @@ FocusScope {
 
     function commitDropOnItem(dragId, dropId, op) {
         root.dndItem.text = "drag " + dragId + " onto " + dropId + " with " + op
+        root.dndItem.arrangementDropCommitted = true
         ItemArrangementProxyModel.commitDndOperation(dragId, dropId, op)
     }
 
@@ -99,6 +100,22 @@ FocusScope {
 
     function containsGridItemAt(x, y) {
         return gridViewContainer.indexAt(x, y) >= 0
+    }
+
+    function containsGridDropAreaAt(x, y) {
+        return gridViewContainer.containsGridAreaAt(x, y)
+    }
+
+    function gridItemVisualPositions() {
+        return gridViewContainer.itemVisualPositions()
+    }
+
+    function animateGridItemsFromPositions(positions) {
+        gridViewContainer.animateItemsFromPositions(positions)
+    }
+
+    function setGridItemTransitionsEnabled(enabled) {
+        gridViewContainer.itemTransitionsEnabled = enabled
     }
 
     function gridItemAt(x, y) {
@@ -242,6 +259,7 @@ FocusScope {
             Keys.forwardTo: [iconItemDelegate]
 
             property bool isDragHover: false
+            readonly property string desktopId: model.desktopId
             readonly property int activeGridMotionSerial: root.launchGridMotionSerial
             readonly property int gridColumn: index % 7
             readonly property int gridRow: Math.floor(index / 7)
@@ -266,6 +284,8 @@ FocusScope {
             property real gridMotionToOpacity: 1
             property real gridMotionScale: 1
             property real gridMotionOpacity: 1
+            property real rollbackOffsetX: 0
+            property real rollbackOffsetY: 0
 
             visible: !root.folderGridViewPopup.visible
                      || root.folderGridViewPopup.currentFolderId !== Number(model.desktopId.replace("internal/folders/", ""))
@@ -314,6 +334,7 @@ FocusScope {
 
                 const liveKey = dragId + "|" + model.desktopId + "|" + op
                 if (op !== ItemArrangementProxyModel.DndJoin && liveKey === root.dndItem.liveReorderKey) {
+                    root.dndItem.arrangementDropCommitted = true
                     ItemArrangementProxyModel.persistArrangement()
                     return
                 }
@@ -350,6 +371,14 @@ FocusScope {
                 iconMotionWrapper.y = 5
                 gridMotionScale = 1
                 gridMotionOpacity = 1
+            }
+
+            function animateVisualMoveFrom(previousX, previousY, coordinateItem) {
+                rollbackMoveAnim.stop()
+                const currentPoint = delegateRoot.mapToItem(coordinateItem, 0, 0)
+                rollbackOffsetX = previousX - currentPoint.x
+                rollbackOffsetY = previousY - currentPoint.y
+                rollbackMoveAnim.restart()
             }
 
             function activateItem() {
@@ -450,6 +479,10 @@ FocusScope {
                 opacity: root.dndItem.currentlyDraggedId !== model.desktopId ? delegateRoot.gridMotionOpacity : 0
                 scale: delegateRoot.gridMotionScale
                 transformOrigin: Item.Center
+                transform: Translate {
+                    x: delegateRoot.rollbackOffsetX
+                    y: delegateRoot.rollbackOffsetY
+                }
                 layer.enabled: gridMotionAnim.running
                 layer.smooth: true
                 layer.mipmap: true
@@ -493,6 +526,26 @@ FocusScope {
                         root.showContextMenuFn(iconItemDelegate, model, additionalProps)
                         root.pageView.focus = true
                     }
+                }
+            }
+
+            ParallelAnimation {
+                id: rollbackMoveAnim
+
+                NumberAnimation {
+                    target: delegateRoot
+                    property: "rollbackOffsetX"
+                    to: 0
+                    duration: 260 * LauncherController.animationSpeedScale
+                    easing.type: Easing.OutCubic
+                }
+
+                NumberAnimation {
+                    target: delegateRoot
+                    property: "rollbackOffsetY"
+                    to: 0
+                    duration: 260 * LauncherController.animationSpeedScale
+                    easing.type: Easing.OutCubic
                 }
             }
 

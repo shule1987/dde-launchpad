@@ -58,6 +58,58 @@ FocusScope {
         return gridView.indexAt(point.x, point.y)
     }
 
+    function containsGridAreaAt(x, y) {
+        let point = mapToItem(gridFrame, x, y)
+        return point.x >= 0
+            && point.x <= gridFrame.width
+            && point.y >= 0
+            && point.y <= gridFrame.height
+    }
+
+    function itemVisualPositions() {
+        const positions = ({})
+        for (let i = 0; i < gridView.count; ++i) {
+            const child = gridView.itemAtIndex(i)
+            if (!child || child.desktopId === undefined || child.desktopId === "") {
+                continue
+            }
+
+            const point = child.mapToItem(gridFrame, 0, 0)
+            positions[child.desktopId] = Qt.point(point.x, point.y)
+        }
+        return positions
+    }
+
+    function animateItemsFromPositions(positions) {
+        if (!positions) {
+            return
+        }
+
+        if (typeof gridView.forceLayout === "function") {
+            gridView.forceLayout()
+        }
+
+        for (let i = 0; i < gridView.count; ++i) {
+            const child = gridView.itemAtIndex(i)
+            if (!child || child.desktopId === undefined || child.desktopId === "") {
+                continue
+            }
+
+            const previousPoint = positions[child.desktopId]
+            if (!previousPoint || typeof child.animateVisualMoveFrom !== "function") {
+                continue
+            }
+
+            const currentPoint = child.mapToItem(gridFrame, 0, 0)
+            if (Math.abs(previousPoint.x - currentPoint.x) < 0.5
+                    && Math.abs(previousPoint.y - currentPoint.y) < 0.5) {
+                continue
+            }
+
+            child.animateVisualMoveFrom(previousPoint.x, previousPoint.y, gridFrame)
+        }
+    }
+
     Item {
         id: item
         visible: true
@@ -86,6 +138,7 @@ FocusScope {
             ? Math.min(root.rows, Math.ceil(effectiveCompactItemCount / Math.max(1, root.columns)))
             : root.rows
         Rectangle {
+            id: gridFrame
             x: Math.round((parent.width - width) / 2)
             y: root.compactCentered ? 0 : Math.round((parent.height - height) / 2)
             width: {

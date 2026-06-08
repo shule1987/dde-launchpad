@@ -575,6 +575,9 @@ Control {
                 if (typeof dndItem.visualDragHotSpot !== "undefined") {
                     dndItem.visualDragHotSpot = root.Drag.hotSpot
                 }
+                if (typeof dndItem.rememberReturnTarget === "function") {
+                    dndItem.rememberReturnTarget(iconVisualItem)
+                }
                 dndItem.Drag.hotSpot = useQuickDragOverlay ? Qt.point(0, 0) : root.Drag.hotSpot
                 dndItem.Drag.imageSource = useQuickDragOverlay ? "" : root.Drag.imageSource
                 dndItem.Drag.dragType = useExternalDockDrag ? root.Drag.Automatic : root.Drag.Internal
@@ -648,6 +651,9 @@ Control {
                         if (dndItem.currentlyDraggedId === root.Drag.mimeData["text/x-dde-launcher-dnd-desktopId"]) {
                             if (dndItem.Drag.active) {
                                 dndItem.Drag.active = false
+                                return
+                            }
+                            if (dndItem.returnAnimationRunning) {
                                 return
                             }
                             dndItem.currentlyDraggedId = ""

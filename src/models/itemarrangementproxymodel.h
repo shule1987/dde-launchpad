@@ -61,6 +61,7 @@ public:
     Q_INVOKABLE void commitDndOperation(const QString & dragId, const QString & dropId, const DndOperation op, int pageHint = -1);
     Q_INVOKABLE void previewDndOperation(const QString & dragId, const QString & dropId, const DndOperation op, int pageHint = -1);
     Q_INVOKABLE void persistArrangement();
+    Q_INVOKABLE void cancelPreviewArrangement();
     Q_INVOKABLE int creatEmptyPage(int folderId = 0) const;
     Q_INVOKABLE void removeEmptyPage() const;
     Q_INVOKABLE QVariantList folderEntriesForItem(const QString &id) const;
@@ -82,10 +83,20 @@ signals:
     void itemBroughtToFront();
 
 private:
+    struct PageSnapshot {
+        QString folderId;
+        QString name;
+        QList<QStringList> pages;
+    };
+
     explicit ItemArrangementProxyModel(QObject *parent = nullptr);
 
     void loadItemArrangementFromUserData();
     void saveItemArrangementToUserData();
+    PageSnapshot snapshotPage(const QString &folderId, ItemsPage *page) const;
+    void capturePreviewArrangement();
+    void clearPreviewArrangement();
+    void restorePage(ItemsPage *page, const PageSnapshot &snapshot);
     bool performDndOperation(const QString &dragId, const QString &dropId, const DndOperation op, int pageHint, bool persist);
     std::tuple<int, int, int> findItem(const QString & id, bool searchTopLevelOnly = false) const;
     void onSourceModelChanged();
@@ -103,4 +114,7 @@ private:
     QHash<QString, ItemsPage *> m_folders;
     QStandardItemModel m_folderModel;
     bool m_arrangementDirty = false;
+    bool m_hasPreviewArrangementSnapshot = false;
+    PageSnapshot m_previewTopLevelSnapshot;
+    QList<PageSnapshot> m_previewFolderSnapshots;
 };
