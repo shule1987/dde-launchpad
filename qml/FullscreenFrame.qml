@@ -516,6 +516,16 @@ InputEventItem {
         return pageItem.containsGridDropAreaAt(point.x, point.y)
     }
 
+    function commitCurrentPageLiveReorderOnDrop(dragId)
+    {
+        const pageItem = currentGridPageItem()
+        if (!pageItem || typeof pageItem.commitLiveReorderOnDrop !== "function") {
+            return false
+        }
+
+        return pageItem.commitLiveReorderOnDrop(dragId)
+    }
+
     Label {
         id: dndItem
         visible: dragVisualActive || DebugHelper.qtDebugEnabled
@@ -1016,6 +1026,12 @@ InputEventItem {
 
                             const dragId = Helper.dragDesktopId(drop)
                             if (dragId === "" || !root.currentPageContainsGridDrop(drop)) {
+                                dropArea.pageIntent = 0
+                                return
+                            }
+
+                            if (root.commitCurrentPageLiveReorderOnDrop(dragId)) {
+                                root.requestGlassSnapshotAfterSettled()
                                 dropArea.pageIntent = 0
                                 return
                             }

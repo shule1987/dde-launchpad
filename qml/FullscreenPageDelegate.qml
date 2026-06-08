@@ -75,6 +75,37 @@ FocusScope {
         liveReorderTimer.restart()
     }
 
+    function commitLiveReorderOnDrop(dragId) {
+        liveReorderTimer.stop()
+
+        if (dragId === "") {
+            pendingLiveReorderKey = ""
+            return false
+        }
+
+        if (pendingLiveReorderKey.indexOf(dragId + "|") === 0
+                && pendingLiveReorderKey !== root.dndItem.liveReorderKey) {
+            root.dndItem.liveReorderKey = pendingLiveReorderKey
+            pendingLiveReorderKey = ""
+            root.dndItem.arrangementDropCommitted = true
+            ItemArrangementProxyModel.commitDndOperation(
+                pendingLiveReorderDragId,
+                pendingLiveReorderDropId,
+                pendingLiveReorderOp
+            )
+            return true
+        }
+
+        pendingLiveReorderKey = ""
+        if (root.dndItem.liveReorderKey.indexOf(dragId + "|") !== 0) {
+            return false
+        }
+
+        root.dndItem.arrangementDropCommitted = true
+        ItemArrangementProxyModel.persistArrangement()
+        return true
+    }
+
     function checkPageSwitchState() {
         if (root.viewIndex !== root.pageView.currentIndex) {
             return
@@ -330,7 +361,14 @@ FocusScope {
                 root.pendingLiveReorderKey = ""
 
                 const dragId = Helper.dragDesktopId(drop)
-                if (dragId === "" || dragId === model.desktopId) {
+                if (dragId === "") {
+                    return
+                }
+
+                if (dragId === model.desktopId) {
+                    // A preview move can leave the cursor over the dragged item's
+                    // own delegate. Accept the visible preview instead of rolling it back.
+                    root.commitLiveReorderOnDrop(dragId)
                     return
                 }
 
@@ -347,8 +385,7 @@ FocusScope {
 
                 const liveKey = dragId + "|" + model.desktopId + "|" + op
                 if (op !== ItemArrangementProxyModel.DndJoin && liveKey === root.dndItem.liveReorderKey) {
-                    root.dndItem.arrangementDropCommitted = true
-                    ItemArrangementProxyModel.persistArrangement()
+                    root.commitLiveReorderOnDrop(dragId)
                     return
                 }
 
