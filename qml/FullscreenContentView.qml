@@ -53,6 +53,14 @@ Item {
         listviewPage.changedByNonKeyboard = false
     }
 
+    function selectFirstItemForInitialDirectionKey() {
+        const currentPage = listviewPage.currentItem
+        if (currentPage && typeof currentPage.selectFirstItemForInitialDirectionKey === "function") {
+            return currentPage.selectFirstItemForInitialDirectionKey()
+        }
+        return false
+    }
+
     function handleWheelPage(wheel, pageView) {
         if (typeof handleWheelPageFn === "function") {
             handleWheelPageFn(wheel, pageView)

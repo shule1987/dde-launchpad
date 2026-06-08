@@ -20,6 +20,7 @@ Control {
     property Item nextKeyTabTarget
     property alias searchEdit: searchEdit
     property var searchNavigationKeyHandler: null
+    property var initialDirectionKeyHandler: null
 
     padding: 10
 
@@ -69,6 +70,10 @@ Control {
 
                 function handleSearchNavigationKey(key) {
                     if (searchEdit.text.trim() === "") {
+                        if (typeof control.initialDirectionKeyHandler === "function") {
+                            control.initialDirectionKeyHandler(key)
+                            return true
+                        }
                         return false
                     }
 
@@ -90,6 +95,7 @@ Control {
                         break
                     }
                 }
+                Keys.priority: Keys.BeforeItem
 
                 property Palette edittingPalette: Palette {
                     normal {

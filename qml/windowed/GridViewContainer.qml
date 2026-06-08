@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import QtQml 2.15
 import QtQml.Models 2.15
 import QtQuick 2.15
 import QtQuick.Layouts 1.15
@@ -23,6 +24,8 @@ FocusScope {
     property alias interactive: gridView.interactive
     property alias gridViewFocus: gridView.focus
     property bool alwaysShowHighlighted: false
+    property bool focusHighlightVisible: false
+    property bool showFocusHighlightWithoutActiveFocus: false
     property alias gridViewClip: gridView.clip
     property bool activeGridViewFocusOnTab: false
     property int columns: 4
@@ -50,6 +53,32 @@ FocusScope {
     function indexAt(x, y) {
         let point = mapToItem(gridView, x, y)
         return gridView.indexAt(point.x, point.y)
+    }
+
+    function revealFocusHighlight() {
+        focusHighlightVisible = true
+    }
+
+    function hideFocusHighlight() {
+        focusHighlightVisible = false
+    }
+
+    function selectFirstItem() {
+        if (gridView.count > 0) {
+            gridView.currentIndex = 0
+            gridView.positionViewAtIndex(0, GridView.SnapPosition)
+            gridView.forceActiveFocus(Qt.TabFocusReason)
+        }
+        revealFocusHighlight()
+    }
+
+    function selectFirstItemForInitialDirectionKey() {
+        if (focusHighlightVisible) {
+            return false
+        }
+
+        selectFirstItem()
+        return true
     }
 
     Item {
@@ -99,6 +128,8 @@ FocusScope {
                     gridView.positionViewAtIndex(gridView.currentIndex, GridView.SnapPosition)
                     gridView.snapMode = snapMode
                     gridView.preferredHighlightBegin = preferredHighlightBegin
+                } else {
+                    root.hideFocusHighlight()
                 }
             }
             cellHeight: root.cellHeight + paddingRows
@@ -116,13 +147,16 @@ FocusScope {
                     }
                     radius: 8
                     color: parent.palette.highlight
-                    visible: gridView.activeFocus
+                    visible: root.focusHighlightVisible
+                             && (gridView.activeFocus || root.showFocusHighlightWithoutActiveFocus)
                 }
                 Rectangle {
                     anchors.fill: parent
                     radius: 8
                     color: DTK.themeType === ApplicationHelper.DarkType ? Qt.rgba(1, 1, 1, 0.2) : Qt.rgba(0, 0, 0, 0.15)
                     visible: alwaysShowHighlighted
+                             && !(root.focusHighlightVisible
+                                  && (gridView.activeFocus || root.showFocusHighlightWithoutActiveFocus))
                 }
             }
 
@@ -132,6 +166,11 @@ FocusScope {
                     event.key === Qt.Key_Up ||
                     event.key === Qt.Key_Down) {
 
+                    if (root.selectFirstItemForInitialDirectionKey()) {
+                        event.accepted = true
+                        return
+                    }
+                    root.revealFocusHighlight()
                     if (!keyTimer.running) {
                         keyTimer.start()
                     } else {
@@ -142,6 +181,15 @@ FocusScope {
             Timer {
                 id: keyTimer
                 interval: 100
+            }
+        }
+    }
+
+    Connections {
+        target: LauncherController
+        function onVisibleChanged() {
+            if (!LauncherController.visible) {
+                root.hideFocusHighlight()
             }
         }
     }

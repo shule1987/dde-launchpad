@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import QtQml 2.15
 import QtQml.Models 2.15
 import QtQuick 2.15
 import QtQuick.Layouts 1.15
@@ -25,6 +26,8 @@ FocusScope {
     property ScrollBar vScrollBar
     property bool activeGridViewFocusOnTab: false
     property bool alwaysShowHighlighted: false
+    property bool focusHighlightVisible: false
+    property bool showFocusHighlightWithoutActiveFocus: false
     property Transition itemMove
     property bool itemTransitionsEnabled: true
     required property int columns
@@ -46,6 +49,32 @@ FocusScope {
             gridView.currentIndex = gridView.count - 1
         else
             gridView.currentIndex = 0
+    }
+
+    function revealFocusHighlight() {
+        focusHighlightVisible = true
+    }
+
+    function hideFocusHighlight() {
+        focusHighlightVisible = false
+    }
+
+    function selectFirstItem() {
+        if (gridView.count > 0) {
+            gridView.currentIndex = 0
+            gridView.positionViewAtIndex(0, GridView.SnapPosition)
+            gridView.forceActiveFocus(Qt.TabFocusReason)
+        }
+        revealFocusHighlight()
+    }
+
+    function selectFirstItemForInitialDirectionKey() {
+        if (focusHighlightVisible) {
+            return false
+        }
+
+        selectFirstItem()
+        return true
     }
 
     function itemAt(x, y) {
@@ -178,6 +207,8 @@ FocusScope {
                         gridView.positionViewAtIndex(gridView.currentIndex, GridView.SnapPosition)
                         gridView.snapMode = snapMode
                         gridView.preferredHighlightBegin = preferredHighlightBegin
+                    } else {
+                        root.hideFocusHighlight()
                     }
                 }
                     cellHeight: item.gridCellHeight
@@ -191,7 +222,8 @@ FocusScope {
                         }
                         radius: isWindowedMode ? 8 : 18
                         color: parent.palette.highlight
-                        visible: gridView.activeFocus
+                        visible: root.focusHighlightVisible
+                                 && (gridView.activeFocus || root.showFocusHighlightWithoutActiveFocus)
                     }
                     Rectangle {
                         anchors {
@@ -201,6 +233,21 @@ FocusScope {
                         radius: 18
                         color: Qt.rgba(1, 1, 1, 0.2)
                         visible: alwaysShowHighlighted
+                                 && !(root.focusHighlightVisible
+                                      && (gridView.activeFocus || root.showFocusHighlightWithoutActiveFocus))
+                    }
+                }
+
+                Keys.onPressed: function(event) {
+                    if (event.key === Qt.Key_Left
+                            || event.key === Qt.Key_Right
+                            || event.key === Qt.Key_Up
+                            || event.key === Qt.Key_Down) {
+                        if (root.selectFirstItemForInitialDirectionKey()) {
+                            event.accepted = true
+                            return
+                        }
+                        root.revealFocusHighlight()
                     }
                 }
 
@@ -234,6 +281,15 @@ FocusScope {
             Label {
                 id: placeholderLabel
                 Layout.alignment: Qt.AlignCenter
+            }
+        }
+    }
+
+    Connections {
+        target: LauncherController
+        function onVisibleChanged() {
+            if (!LauncherController.visible) {
+                root.hideFocusHighlight()
             }
         }
     }

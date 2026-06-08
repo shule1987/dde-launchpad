@@ -21,6 +21,16 @@ Control {
         frequentlyUsedView.focus = true
     }
 
+    function selectFirstItemForInitialDirectionKey() {
+        if (frequentlyUsedView.visible) {
+            return frequentlyUsedView.selectFirstItemForInitialDirectionKey()
+        }
+        if (recentlyInstalledView.visible) {
+            return recentlyInstalledView.selectFirstItemForInitialDirectionKey()
+        }
+        return false
+    }
+
     contentItem: ColumnLayout {
         spacing: 0
 

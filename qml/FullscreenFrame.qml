@@ -1150,7 +1150,7 @@ InputEventItem {
 
                                     flipPageDelay.start()
                                     if (!footer.searchEdit.focus) {
-                                        baseLayer.focus = true
+                                        baseLayer.forceActiveFocus(Qt.MouseFocusReason)
                                     }
                                     targetPageView.changedByNonKeyboard = true
                                     if (toPage < 0) {
@@ -1203,7 +1203,7 @@ InputEventItem {
                                         if (root.searchActive) {
                                             footer.searchEdit.text = ""
                                             footer.searchEdit.focus = false
-                                            baseLayer.focus = true
+                                            baseLayer.forceActiveFocus(Qt.MouseFocusReason)
                                             root.clearPendingGridPress()
                                             return
                                         }
@@ -1305,7 +1305,7 @@ InputEventItem {
                                         onClicked: {
                                             footer.searchEdit.text = ""
                                             footer.searchEdit.focus = false
-                                            baseLayer.focus = true
+                                            baseLayer.forceActiveFocus(Qt.MouseFocusReason)
                                             root.clearPendingGridPress()
                                         }
                                     }
@@ -1410,6 +1410,10 @@ InputEventItem {
                                     pageView: contentView.pageView
                                     searchGrid: contentView.searchGrid
                                     searchResultCount: contentView.searchResultCount
+                                    initialDirectionKeyHandler: function(key) {
+                                        contentView.pageView.forceActiveFocus(Qt.TabFocusReason)
+                                        return contentView.selectFirstItemForInitialDirectionKey()
+                                    }
                                     glassSourceItem: glassControlsSampleSource
                                     glassSampleRevision: root.glassSampleRevision
                                     glassLive: root.glassLiveEnabled
@@ -1835,8 +1839,10 @@ InputEventItem {
                 event.accepted = true
                 return
             }
-            contentView.pageView.focus = true
-            break
+            contentView.pageView.forceActiveFocus(Qt.TabFocusReason)
+            contentView.selectFirstItemForInitialDirectionKey()
+            event.accepted = true
+            return
         case Qt.Key_Enter:
         case Qt.Key_Return:
             contentView.pageView.focus = true
@@ -1870,7 +1876,7 @@ InputEventItem {
             if (folderGridViewPopup.visible) {
                 folderGridViewPopup.close()
             }
-            baseLayer.focus = true
+            baseLayer.forceActiveFocus(Qt.MouseFocusReason)
         }
     }
 

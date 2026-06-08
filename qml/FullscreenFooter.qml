@@ -21,6 +21,7 @@ Item {
     required property real glassSampleRevision
     required property bool glassLive
     required property bool glassEffect
+    property var initialDirectionKeyHandler: null
 
     property alias searchEdit: searchEdit
 
@@ -84,9 +85,14 @@ Item {
 
         KeyNavigation.up: searchEdit.text.trim() === "" ? root.pageView : null
         KeyNavigation.down: KeyNavigation.up
+        Keys.priority: Keys.BeforeItem
 
         function handleSearchNavigationKey(key) {
             if (searchEdit.text.trim() === "") {
+                if (typeof root.initialDirectionKeyHandler === "function") {
+                    root.initialDirectionKeyHandler(key)
+                    return true
+                }
                 return false
             }
 

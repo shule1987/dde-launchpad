@@ -24,6 +24,10 @@ Control {
         recentlyInstalledViewContainer.focus = true
     }
 
+    function selectFirstItemForInitialDirectionKey() {
+        return recentlyInstalledViewContainer.selectFirstItemForInitialDirectionKey()
+    }
+
     contentItem: ColumnLayout {
         spacing: 0
         Label {
@@ -53,11 +57,13 @@ Control {
                 dndEnabled: !folderGridViewPopup.visible
                 Drag.mimeData: Helper.generateDragMimeData(model.desktopId, true)
                 onItemClicked: {
+                    recentlyInstalledViewContainer.hideFocusHighlight()
                     launchApp(desktopId)
                 }
                 onMenuTriggered: {
+                    recentlyInstalledViewContainer.hideFocusHighlight()
                     showContextMenu(this, model)
-                    baseLayer.focus = true
+                    baseLayer.forceActiveFocus(Qt.MouseFocusReason)
                 }
             }
             activeFocusOnTab: visible && gridViewFocus

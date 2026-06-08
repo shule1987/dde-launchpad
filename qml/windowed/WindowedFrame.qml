@@ -62,10 +62,20 @@ InputEventItem {
         return true
     }
 
+    function selectFirstAppGridItemForInitialDirectionKey() {
+        if (!appGridLoader.item
+                || typeof appGridLoader.item.selectFirstItemForInitialDirectionKey !== "function") {
+            return false
+        }
+
+        appGridLoader.item.forceActiveFocus(Qt.TabFocusReason)
+        return appGridLoader.item.selectFirstItemForInitialDirectionKey()
+    }
+
     MouseArea {
         anchors.fill: parent
         onClicked: () => {
-            baseLayer.focus = true
+            baseLayer.forceActiveFocus(Qt.MouseFocusReason)
         }
     }
 
@@ -210,6 +220,9 @@ InputEventItem {
         searchNavigationKeyHandler: function(key) {
             return baseLayer.handleSearchNavigationKey(key)
         }
+        initialDirectionKeyHandler: function(key) {
+            return baseLayer.selectFirstAppGridItemForInitialDirectionKey()
+        }
     }
 
     Control {
@@ -324,14 +337,15 @@ InputEventItem {
                     event.accepted = true
                     return
                 }
-                appGridLoader.item.forceActiveFocus()
-                return;
             case Qt.Key_Left:
             case Qt.Key_Right:
                 if (baseLayer.handleSearchNavigationKey(event.key)) {
                     event.accepted = true
+                    return
                 }
-                return;
+                baseLayer.selectFirstAppGridItemForInitialDirectionKey()
+                event.accepted = true
+                return
             case Qt.Key_Enter:
             case Qt.Key_Return:
                 if (baseLayer.searchActive) {
@@ -376,7 +390,7 @@ InputEventItem {
             // clear searchEdit text
             bottomBar.searchEdit.text = ""
             // reset(remove) keyboard focus
-            baseLayer.focus = true
+            baseLayer.forceActiveFocus(Qt.MouseFocusReason)
             // reset scroll area position and state
             appList.resetViewState()
             folderGridViewPopup.close()

@@ -25,6 +25,10 @@ Control {
     property int count: frequentlyUsedViewContainer.count
     property int maxCount: 16
 
+    function selectFirstItemForInitialDirectionKey() {
+        return frequentlyUsedViewContainer.selectFirstItemForInitialDirectionKey()
+    }
+
     contentItem: ColumnLayout {
         spacing: 0
 
@@ -56,11 +60,13 @@ Control {
                 dndEnabled: !folderGridViewPopup.visible
                 Drag.mimeData: Helper.generateDragMimeData(model.desktopId, true)
                 onItemClicked: {
+                    frequentlyUsedViewContainer.hideFocusHighlight()
                     launchApp(desktopId)
                 }
                 onMenuTriggered: {
+                    frequentlyUsedViewContainer.hideFocusHighlight()
                     showContextMenu(this, model)
-                    baseLayer.focus = true
+                    baseLayer.forceActiveFocus(Qt.MouseFocusReason)
                 }
             }
 

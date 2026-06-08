@@ -24,6 +24,7 @@ Item {
     property int currentIndex: 0
     readonly property Item currentItem: searchPagesView.currentItem ? searchPagesView.currentItem.currentItem : null
     readonly property int resultCount: SearchFilterProxyModel.count
+    readonly property int columns: 7
     readonly property int pageSize: 4 * 7
     readonly property int pageCount: Math.ceil(resultCount / pageSize)
     readonly property int pageSwitchDuration: 600
@@ -72,30 +73,86 @@ Item {
         syncingCurrentIndex = false
     }
 
+    function revealCurrentFocusHighlight() {
+        const grid = searchPagesView.currentItem ? searchPagesView.currentItem.gridItem : null
+        if (grid && typeof grid.revealFocusHighlight === "function") {
+            grid.revealFocusHighlight()
+        }
+    }
+
+    function hideCurrentFocusHighlight() {
+        const grid = searchPagesView.currentItem ? searchPagesView.currentItem.gridItem : null
+        if (grid && typeof grid.hideFocusHighlight === "function") {
+            grid.hideFocusHighlight()
+        }
+    }
+
+    function currentFocusHighlightVisible() {
+        const grid = searchPagesView.currentItem ? searchPagesView.currentItem.gridItem : null
+        return grid ? grid.focusHighlightVisible : false
+    }
+
+    function selectFirstItemForInitialDirectionKey() {
+        if (currentFocusHighlightVisible()) {
+            return false
+        }
+
+        setCurrentGlobalIndex(0)
+        Qt.callLater(function() {
+            root.revealCurrentFocusHighlight()
+        })
+        return true
+    }
+
+    function targetIndexForKey(key, index) {
+        const pageStartIndex = Math.floor(index / pageSize) * pageSize
+        const pageLocalIndex = index - pageStartIndex
+        const currentPageCount = Math.min(pageSize, resultCount - pageStartIndex)
+
+        switch (key) {
+        case Qt.Key_Left:
+            return index > 0 ? index - 1 : resultCount - 1
+        case Qt.Key_Right:
+            return index < resultCount - 1 ? index + 1 : 0
+        case Qt.Key_Up:
+            if (pageLocalIndex >= columns) {
+                return index - columns
+            }
+            return pageStartIndex > 0 ? pageStartIndex - 1 : index
+        case Qt.Key_Down:
+            if (pageLocalIndex + columns < currentPageCount) {
+                return index + columns
+            }
+            return pageStartIndex + pageSize < resultCount ? pageStartIndex + pageSize : index
+        default:
+            return index
+        }
+    }
+
     function moveCurrentSelectionByKey(key) {
         if (!modelReady || resultCount <= 0) {
             return true
         }
 
-        let targetIndex = currentIndex
         switch (key) {
         case Qt.Key_Left:
-            targetIndex = currentIndex > 0 ? currentIndex - 1 : resultCount - 1
-            break
         case Qt.Key_Right:
-            targetIndex = currentIndex < resultCount - 1 ? currentIndex + 1 : 0
-            break
         case Qt.Key_Up:
-            targetIndex = Math.max(0, currentIndex - 7)
-            break
         case Qt.Key_Down:
-            targetIndex = Math.min(resultCount - 1, currentIndex + 7)
             break
         default:
             return false
         }
 
+        if (selectFirstItemForInitialDirectionKey()) {
+            return true
+        }
+
+        const targetIndex = targetIndexForKey(key, currentIndex)
         setCurrentGlobalIndex(targetIndex)
+        Qt.callLater(function() {
+            root.revealCurrentFocusHighlight()
+        })
         return true
     }
 
@@ -201,6 +258,7 @@ Item {
 
             property alias currentIndex: searchResultGridViewContainer.currentIndex
             readonly property alias currentItem: searchResultGridViewContainer.currentItem
+            readonly property alias gridItem: searchResultGridViewContainer
             readonly property int count: pageSliceModel.count
 
             PageSliceProxyModel {
@@ -216,6 +274,7 @@ Item {
                 activeFocusOnTab: visible && gridViewFocus
                 focus: true
                 alwaysShowHighlighted: true
+                showFocusHighlightWithoutActiveFocus: true
                 rows: 4
                 columns: 7
                 cellWidth: root.cellWidth
@@ -241,48 +300,22 @@ Item {
 
                 Keys.onLeftPressed: function(event) {
                     event.accepted = true
-
-                    if (pageSliceModel.count <= 0) {
-                        return
-                    }
-
-                    const current = searchResultGridViewContainer.currentIndex
-                    if (current > 0) {
-                        searchResultGridViewContainer.currentIndex = current - 1
-                        return
-                    }
-
-                    if (searchPagesView.count <= 1) {
-                        searchResultGridViewContainer.currentIndex = pageSliceModel.count - 1
-                        return
-                    }
-
-                    const targetPage = pageDelegate.pageIndex === 0 ? searchPagesView.count - 1 : pageDelegate.pageIndex - 1
-                    searchPagesView.pendingGridIndex = root.pageSize - 1
-                    searchPagesView.setCurrentIndex(targetPage)
+                    root.moveCurrentSelectionByKey(event.key)
                 }
 
                 Keys.onRightPressed: function(event) {
                     event.accepted = true
+                    root.moveCurrentSelectionByKey(event.key)
+                }
 
-                    if (pageSliceModel.count <= 0) {
-                        return
-                    }
+                Keys.onUpPressed: function(event) {
+                    event.accepted = true
+                    root.moveCurrentSelectionByKey(event.key)
+                }
 
-                    const current = searchResultGridViewContainer.currentIndex
-                    if (current < pageSliceModel.count - 1) {
-                        searchResultGridViewContainer.currentIndex = current + 1
-                        return
-                    }
-
-                    if (searchPagesView.count <= 1) {
-                        searchResultGridViewContainer.currentIndex = 0
-                        return
-                    }
-
-                    const targetPage = pageDelegate.pageIndex === searchPagesView.count - 1 ? 0 : pageDelegate.pageIndex + 1
-                    searchPagesView.pendingGridIndex = 0
-                    searchPagesView.setCurrentIndex(targetPage)
+                Keys.onDownPressed: function(event) {
+                    event.accepted = true
+                    root.moveCurrentSelectionByKey(event.key)
                 }
             }
         }
@@ -298,6 +331,7 @@ Item {
 
         function onSearchTextChanged() {
             if (root.modelReady) {
+                root.hideCurrentFocusHighlight()
                 root.setCurrentGlobalIndex(0)
             }
         }

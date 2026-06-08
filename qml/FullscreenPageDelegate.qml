@@ -84,6 +84,7 @@ FocusScope {
             return
         }
         if (root.pageView.changedByNonKeyboard) {
+            gridViewContainer.hideFocusHighlight()
             gridViewContainer.setPreviousPageSwitch(false)
             root.pageView.changedByNonKeyboard = false
         } else if (root.pageView.currentIndex + 1 === root.pageView.previousIndex
@@ -120,6 +121,10 @@ FocusScope {
 
     function gridItemAt(x, y) {
         return gridViewContainer.itemAt(x, y)
+    }
+
+    function selectFirstItemForInitialDirectionKey() {
+        return gridViewContainer.selectFirstItemForInitialDirectionKey()
     }
 
     onIconGridMotionSerialChanged: {
@@ -190,6 +195,10 @@ FocusScope {
 
         Keys.onLeftPressed: function(event) {
             event.accepted = true
+            if (gridViewContainer.selectFirstItemForInitialDirectionKey()) {
+                return
+            }
+            gridViewContainer.revealFocusHighlight()
 
             const count = proxyModel.count
             if (count === 0) {
@@ -216,6 +225,10 @@ FocusScope {
 
         Keys.onRightPressed: function(event) {
             event.accepted = true
+            if (gridViewContainer.selectFirstItemForInitialDirectionKey()) {
+                return
+            }
+            gridViewContainer.revealFocusHighlight()
 
             const count = proxyModel.count
             if (count === 0) {
@@ -503,13 +516,18 @@ FocusScope {
                     glassEffect: root.glassEffect
                     transformOrigin: Item.Center
 
-                    onItemClicked: root.launchAppFn(desktopId)
+                    onItemClicked: {
+                        gridViewContainer.hideFocusHighlight()
+                        root.launchAppFn(desktopId)
+                    }
 
                     onFolderClicked: {
+                        gridViewContainer.hideFocusHighlight()
                         delegateRoot.openFolderFromDelegate(iconItemDelegate)
                     }
 
                     onMenuTriggered: {
+                        gridViewContainer.hideFocusHighlight()
                         const additionalProps = {}
                         if (model.itemType === ItemArrangementProxyModel.FolderItemType) {
                             additionalProps.openFolderFn = function() {
