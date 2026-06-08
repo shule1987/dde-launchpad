@@ -17,6 +17,7 @@ Item {
     required property real iconScaleFactor
     required property var launchAppFn
     required property var showContextMenuFn
+    required property string searchText
     property var handleWheelPageFn: null
 
     property alias pageView: searchPagesView
@@ -26,6 +27,7 @@ Item {
     readonly property int pageSize: 4 * 7
     readonly property int pageCount: Math.ceil(resultCount / pageSize)
     readonly property int pageSwitchDuration: 600
+    readonly property bool modelReady: searchText !== "" && SearchFilterProxyModel.searchText === searchText
     property bool syncingCurrentIndex: false
 
     function pageSwitchAnimationDuration() {
@@ -70,6 +72,33 @@ Item {
         syncingCurrentIndex = false
     }
 
+    function moveCurrentSelectionByKey(key) {
+        if (!modelReady || resultCount <= 0) {
+            return true
+        }
+
+        let targetIndex = currentIndex
+        switch (key) {
+        case Qt.Key_Left:
+            targetIndex = currentIndex > 0 ? currentIndex - 1 : resultCount - 1
+            break
+        case Qt.Key_Right:
+            targetIndex = currentIndex < resultCount - 1 ? currentIndex + 1 : 0
+            break
+        case Qt.Key_Up:
+            targetIndex = Math.max(0, currentIndex - 7)
+            break
+        case Qt.Key_Down:
+            targetIndex = Math.min(resultCount - 1, currentIndex + 7)
+            break
+        default:
+            return false
+        }
+
+        setCurrentGlobalIndex(targetIndex)
+        return true
+    }
+
     function handleWheelPage(wheel) {
         if (typeof handleWheelPageFn === "function") {
             handleWheelPageFn(wheel, searchPagesView)
@@ -89,7 +118,7 @@ Item {
     GridViewContainer {
         id: emptySearchResultGrid
         anchors.fill: parent
-        visible: root.resultCount <= 0
+        visible: root.modelReady && root.resultCount <= 0
         rows: 4
         columns: 7
         cellWidth: root.cellWidth
@@ -107,7 +136,7 @@ Item {
     ListView {
         id: searchPagesView
         anchors.fill: parent
-        visible: root.resultCount > 0
+        visible: root.modelReady && root.resultCount > 0
         clip: true
         snapMode: ListView.SnapOneItem
         orientation: ListView.Horizontal
@@ -262,7 +291,15 @@ Item {
     Connections {
         target: SearchFilterProxyModel
         function onCountChanged() {
-            root.setCurrentGlobalIndex(root.currentIndex)
+            if (root.modelReady) {
+                root.setCurrentGlobalIndex(root.currentIndex)
+            }
+        }
+
+        function onSearchTextChanged() {
+            if (root.modelReady) {
+                root.setCurrentGlobalIndex(0)
+            }
         }
     }
 }

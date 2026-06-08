@@ -21,6 +21,7 @@ InputEventItem {
 
     visible: true
     focus: true
+    readonly property bool searchActive: SearchFilterProxyModel.searchText !== ""
 
     KeyNavigation.tab: appGridLoader.item
 
@@ -44,6 +45,21 @@ InputEventItem {
     function getHorizontalCoordinatesOfSideBar()
     {
         return sideBar.x + sideBar.width / 2
+    }
+
+    function handleSearchNavigationKey(key) {
+        if (!baseLayer.searchActive) {
+            return false
+        }
+
+        if (appGridLoader.item
+                && typeof appGridLoader.item.moveCurrentSelectionByKey === "function") {
+            appGridLoader.item.moveCurrentSelectionByKey(key)
+        }
+        if (!bottomBar.searchEdit.activeFocus) {
+            bottomBar.searchEdit.forceActiveFocus(Qt.TabFocusReason)
+        }
+        return true
     }
 
     MouseArea {
@@ -180,8 +196,8 @@ InputEventItem {
             Layout.alignment: Qt.AlignRight | Qt.AlignTop
             Layout.leftMargin: Helper.frequentlyUsed.leftMargin
             Layout.rightMargin: Helper.frequentlyUsed.rightMargin
-            sourceComponent: bottomBar.searchEdit.text === "" ? analysisViewCom
-                : searchResultViewCom
+            sourceComponent: baseLayer.searchActive ? searchResultViewCom
+                : analysisViewCom
         }
     }
 
@@ -191,6 +207,9 @@ InputEventItem {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         nextKeyTabTarget: appGridLoader.keyTabTarget
+        searchNavigationKeyHandler: function(key) {
+            return baseLayer.handleSearchNavigationKey(key)
+        }
     }
 
     Control {
@@ -301,11 +320,21 @@ InputEventItem {
             switch (event.key) {
             case Qt.Key_Up:
             case Qt.Key_Down:
+                if (baseLayer.handleSearchNavigationKey(event.key)) {
+                    event.accepted = true
+                    return
+                }
                 appGridLoader.item.forceActiveFocus()
+                return;
+            case Qt.Key_Left:
+            case Qt.Key_Right:
+                if (baseLayer.handleSearchNavigationKey(event.key)) {
+                    event.accepted = true
+                }
                 return;
             case Qt.Key_Enter:
             case Qt.Key_Return:
-                if (bottomBar.searchEdit.text !== "") {
+                if (baseLayer.searchActive) {
                     appGridLoader.item.launchCurrentItem()
                 } else {
                     appGridLoader.item.forceActiveFocus()
@@ -324,10 +353,12 @@ InputEventItem {
             return
         }
 
-        if (bottomBar.searchEdit.text !== "" || bottomBar.searchEdit.focus !== true) {
-            bottomBar.searchEdit.text = text
-            bottomBar.searchEdit.focus = true
+        if (bottomBar.searchEdit.activeFocus) {
+            return
         }
+
+        bottomBar.searchEdit.forceActiveFocus(Qt.TabFocusReason)
+        bottomBar.searchEdit.text = bottomBar.searchEdit.text + text
     }
 
     Component.onCompleted: {

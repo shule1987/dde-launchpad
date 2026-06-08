@@ -36,6 +36,65 @@ Control {
         currentGrid?.currentItem?.itemClicked()
     }
 
+    function setCurrentGlobalIndex(index) {
+        if (resultCount <= 0) {
+            searchResultPagesView.pendingGridIndex = 0
+            searchResultPagesView.setCurrentIndex(0)
+            return
+        }
+
+        const clampedIndex = Math.max(0, Math.min(index, resultCount - 1))
+        const targetPage = Math.floor(clampedIndex / pageSize)
+        const pageLocalIndex = clampedIndex % pageSize
+
+        searchResultPagesView.pendingGridIndex = pageLocalIndex
+        if (searchResultPagesView.currentIndex !== targetPage) {
+            searchResultPagesView.setCurrentIndex(targetPage)
+        } else if (searchResultPagesView.currentItem) {
+            searchResultPagesView.currentItem.currentIndex =
+                    Math.min(pageLocalIndex, Math.max(0, searchResultPagesView.currentItem.count - 1))
+            searchResultPagesView.pendingGridIndex = -1
+        }
+    }
+
+    function currentGlobalIndex() {
+        if (resultCount <= 0) {
+            return 0
+        }
+
+        const pageIndex = Math.max(0, searchResultPagesView.currentIndex)
+        const localIndex = currentGrid ? Math.max(0, currentGrid.currentIndex) : 0
+        return Math.min(resultCount - 1, pageIndex * pageSize + localIndex)
+    }
+
+    function moveCurrentSelectionByKey(key) {
+        if (resultCount <= 0) {
+            return true
+        }
+
+        const current = currentGlobalIndex()
+        let targetIndex = current
+        switch (key) {
+        case Qt.Key_Left:
+            targetIndex = current > 0 ? current - 1 : resultCount - 1
+            break
+        case Qt.Key_Right:
+            targetIndex = current < resultCount - 1 ? current + 1 : 0
+            break
+        case Qt.Key_Up:
+            targetIndex = Math.max(0, current - 4)
+            break
+        case Qt.Key_Down:
+            targetIndex = Math.min(resultCount - 1, current + 4)
+            break
+        default:
+            return false
+        }
+
+        setCurrentGlobalIndex(targetIndex)
+        return true
+    }
+
     function resetCurrentPage() {
         searchResultPagesView.pendingGridIndex = 0
         searchResultPagesView.setCurrentIndex(0)
@@ -223,7 +282,11 @@ Control {
             currentIndex: searchResultPagesView.currentIndex
             interactive: true
             spacing: 5
-            onCurrentIndexChanged: searchResultPagesView.setCurrentIndex(currentIndex)
+            onCurrentIndexChanged: {
+                if (searchResultPagesView.currentIndex !== currentIndex) {
+                    searchResultPagesView.setCurrentIndex(currentIndex)
+                }
+            }
         }
 
         Item {

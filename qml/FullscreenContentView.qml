@@ -33,6 +33,7 @@ Item {
     property alias pageView: listviewPage
     property alias searchGrid: searchResultGridViewContainer
     property alias searchPageView: searchResultGridViewContainer.pageView
+    property alias searchModelReady: searchResultGridViewContainer.modelReady
     readonly property int searchResultCount: searchResultGridViewContainer.resultCount
     readonly property int pageSwitchDuration: 600
 
@@ -156,6 +157,7 @@ Item {
         cellWidth: root.cellWidth
         cellHeight: root.cellHeight
         iconScaleFactor: root.iconScaleFactor
+        searchText: root.searchText
         launchAppFn: root.launchAppFn
         showContextMenuFn: root.showContextMenuFn
         handleWheelPageFn: root.handleWheelPageFn

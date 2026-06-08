@@ -87,6 +87,10 @@ SearchFilterProxyModel::SearchFilterProxyModel(QObject *parent)
 
     const auto refreshSearchState = [this]() {
         clearWeightCache();
+        if (m_searchFilterUpdateInProgress || m_searchStatePublishPending) {
+            return;
+        }
+
         scheduleCountChanged();
     };
     connect(this, &QAbstractItemModel::rowsInserted, this, refreshSearchState);
@@ -127,6 +131,35 @@ SearchFilterProxyModel::SearchFilterProxyModel(QObject *parent)
 int SearchFilterProxyModel::count() const
 {
     return rowCount();
+}
+
+QString SearchFilterProxyModel::searchText() const
+{
+    return m_searchText;
+}
+
+void SearchFilterProxyModel::setSearchText(const QString &searchText)
+{
+    const QString normalizedSearchText = searchText.trimmed();
+    if (normalizedSearchText == m_pendingSearchText
+            && normalizedSearchText == m_searchText
+            && filterRegularExpression().pattern() == normalizedSearchText) {
+        return;
+    }
+
+    m_pendingSearchText = normalizedSearchText;
+
+    if (normalizedSearchText.isEmpty() && !m_searchText.isEmpty()) {
+        m_searchText.clear();
+        emit searchTextChanged();
+    }
+
+    clearWeightCache();
+    m_searchFilterUpdateInProgress = true;
+    setFilterRegularExpression(QRegularExpression(normalizedSearchText));
+    m_searchFilterUpdateInProgress = false;
+
+    scheduleSearchStatePublish();
 }
 
 bool SearchFilterProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
@@ -363,5 +396,25 @@ void SearchFilterProxyModel::scheduleCountChanged()
     QTimer::singleShot(0, this, [this]() {
         m_countChangePending = false;
         emit countChanged();
+    });
+}
+
+void SearchFilterProxyModel::scheduleSearchStatePublish()
+{
+    if (m_searchStatePublishPending) {
+        return;
+    }
+
+    m_searchStatePublishPending = true;
+    QTimer::singleShot(0, this, [this]() {
+        m_searchStatePublishPending = false;
+        emit countChanged();
+
+        if (m_searchText == m_pendingSearchText) {
+            return;
+        }
+
+        m_searchText = m_pendingSearchText;
+        emit searchTextChanged();
     });
 }

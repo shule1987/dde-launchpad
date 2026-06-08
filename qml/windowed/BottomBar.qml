@@ -19,6 +19,7 @@ Control {
     property Item keyTabTarget: shutdownBtn
     property Item nextKeyTabTarget
     property alias searchEdit: searchEdit
+    property var searchNavigationKeyHandler: null
 
     padding: 10
 
@@ -63,7 +64,31 @@ Control {
                 onTextChanged: {
                     console.log(text)
                     searchEdit.focus = true
-                    SearchFilterProxyModel.setFilterRegularExpression(text.trim())
+                    SearchFilterProxyModel.searchText = text.trim()
+                }
+
+                function handleSearchNavigationKey(key) {
+                    if (searchEdit.text.trim() === "") {
+                        return false
+                    }
+
+                    if (typeof control.searchNavigationKeyHandler === "function") {
+                        control.searchNavigationKeyHandler(key)
+                    }
+                    return true
+                }
+
+                Keys.onPressed: function(event) {
+                    switch (event.key) {
+                    case Qt.Key_Left:
+                    case Qt.Key_Right:
+                    case Qt.Key_Up:
+                    case Qt.Key_Down:
+                        if (searchEdit.handleSearchNavigationKey(event.key)) {
+                            event.accepted = true
+                        }
+                        break
+                    }
                 }
 
                 property Palette edittingPalette: Palette {

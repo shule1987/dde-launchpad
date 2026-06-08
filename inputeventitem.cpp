@@ -167,6 +167,12 @@ bool InputEventItem::eventFilter(QObject *obj, QEvent *event) {
     }
 
     if (event->type() == QEvent::InputMethod && (this->children().contains(obj) || obj == this)) {
+        if (m_inputMethodSource && window()) {
+            auto *focusItem = window()->activeFocusItem();
+            if (focusItem == m_inputMethodSource || isItemAncestorOf(m_inputMethodSource, focusItem))
+                return QObject::eventFilter(obj, event);
+        }
+
         if (hasEditableFocus())
             return QObject::eventFilter(obj, event);
 

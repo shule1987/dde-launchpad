@@ -82,8 +82,33 @@ Item {
             borderColor: Qt.rgba(1, 1, 1, 0.12)
         }
 
-        KeyNavigation.up: searchEdit.text === "" ? root.pageView : root.searchGrid
+        KeyNavigation.up: searchEdit.text.trim() === "" ? root.pageView : null
         KeyNavigation.down: KeyNavigation.up
+
+        function handleSearchNavigationKey(key) {
+            if (searchEdit.text.trim() === "") {
+                return false
+            }
+
+            if (root.searchGrid
+                    && typeof root.searchGrid.moveCurrentSelectionByKey === "function") {
+                root.searchGrid.moveCurrentSelectionByKey(key)
+            }
+            return true
+        }
+
+        Keys.onPressed: function(event) {
+            switch (event.key) {
+            case Qt.Key_Left:
+            case Qt.Key_Right:
+            case Qt.Key_Up:
+            case Qt.Key_Down:
+                if (searchEdit.handleSearchNavigationKey(event.key)) {
+                    event.accepted = true
+                }
+                break
+            }
+        }
 
         Keys.onReturnPressed: {
             if (searchEdit.text === "") {
@@ -97,8 +122,9 @@ Item {
 
         onTextChanged: {
             searchEdit.focus = true
-            SearchFilterProxyModel.setFilterRegularExpression(text.trim())
-            if (text !== "" && root.searchResultCount > 0) {
+            const normalizedSearchText = text.trim()
+            SearchFilterProxyModel.searchText = normalizedSearchText
+            if (normalizedSearchText !== "") {
                 root.searchGrid.currentIndex = 0
             }
         }

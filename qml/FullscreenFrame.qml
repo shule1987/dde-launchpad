@@ -20,6 +20,8 @@ InputEventItem {
     inputMethodSource: folderGridViewPopup.folderNameEditing ? null : footer.searchEdit
     wheelEventForwardingEnabled: true
     focus: true
+    readonly property string requestedSearchText: footer.searchEdit.text.trim()
+    readonly property bool searchActive: requestedSearchText !== ""
 
     property bool dockAreaReservedByWindow: false
     required property var launchAppFn
@@ -37,6 +39,7 @@ InputEventItem {
     property int iconContentRevision: 0
     property string wallpaperBlurCacheKey: ""
     property string contentBlurCacheKey: ""
+    property bool glassSnapshotSearchActive: false
     property bool launchTransitionActive: false
     property var pendingGridPressItem: null
     property var pendingGridPressPageItem: null
@@ -83,6 +86,21 @@ InputEventItem {
             || pointInItem(nextPageButton, point)
     }
 
+    function handleSearchNavigationKey(key) {
+        if (!root.searchActive) {
+            return false
+        }
+
+        if (contentView.searchGrid
+                && typeof contentView.searchGrid.moveCurrentSelectionByKey === "function") {
+            contentView.searchGrid.moveCurrentSelectionByKey(key)
+        }
+        if (!footer.searchEdit.activeFocus) {
+            footer.searchEdit.forceActiveFocus(Qt.TabFocusReason)
+        }
+        return true
+    }
+
     function searchEditRectInCanvas() {
         if (!footer || !footer.searchEdit || !fullscreenCanvas) {
             return Qt.rect(0, 0, 0, 0)
@@ -123,7 +141,7 @@ InputEventItem {
         const pageItem = pendingGridPressPageItem
         clearPendingGridPress()
 
-        if (!pressedItem || !pageItem || footer.searchEdit.text !== "" || folderGridViewPopup.visible || root.launcherDragActive) {
+        if (!pressedItem || !pageItem || root.searchActive || folderGridViewPopup.visible || root.launcherDragActive) {
             return
         }
         if (typeof pageItem.gridItemAt !== "function"
@@ -163,7 +181,7 @@ InputEventItem {
         const p = fullscreenCanvas.mapFromItem(root, position.x, position.y)
         const searchRect = searchEditRectInCanvas()
 
-        if (footer.searchEdit.text !== ""
+        if (root.searchActive
                 && contentView.searchResultCount <= 0
                 && p.y >= contentArea.y
                 && p.y <= contentArea.y + contentArea.height) {
@@ -188,7 +206,7 @@ InputEventItem {
             return
         }
 
-        if (footer.searchEdit.text !== "") {
+        if (root.searchActive) {
             clearPendingGridPress()
             return
         }
@@ -271,7 +289,7 @@ InputEventItem {
         return [
             iconContentRevision,
             contentView.pageView.currentIndex,
-            footer.searchEdit.text,
+            root.searchActive,
             contentArea.width,
             contentArea.height,
             baseLayer.iconScaleFactor,
@@ -315,6 +333,16 @@ InputEventItem {
             return
         }
         glassSnapshotRequestTimer.restart()
+    }
+
+    function requestGlassSnapshotForSearchState() {
+        const searchActive = root.searchActive
+        if (searchActive === glassSnapshotSearchActive) {
+            return
+        }
+
+        glassSnapshotSearchActive = searchActive
+        requestGlassSnapshotAfterSettled()
     }
 
     MouseArea {
@@ -1105,7 +1133,7 @@ InputEventItem {
 
                                 function handlePageWheel(wheel, explicitPageView) {
                                     const targetPageView = explicitPageView
-                                            || (footer.searchEdit.text !== "" ? contentView.searchPageView : contentView.pageView)
+                                            || (root.searchActive ? contentView.searchPageView : contentView.pageView)
                                     if (!targetPageView || targetPageView.count <= 1) {
                                         return
                                     }
@@ -1172,7 +1200,7 @@ InputEventItem {
                                         if (root.pointInRect(Qt.point(mouse.x, mouse.y), root.searchEditRectInCanvas())) {
                                             return
                                         }
-                                        if (footer.searchEdit.text !== "") {
+                                        if (root.searchActive) {
                                             footer.searchEdit.text = ""
                                             footer.searchEdit.focus = false
                                             baseLayer.focus = true
@@ -1217,8 +1245,10 @@ InputEventItem {
                                     anchors.right: parent.right
                                     anchors.top: parent.top
                                     bandHeight: baseLayer.topBandHeight
-                                    searchActive: footer.searchEdit.text !== ""
-                                    pageView: footer.searchEdit.text !== "" ? contentView.searchPageView : contentView.pageView
+                                    searchActive: root.searchActive
+                                    pageView: root.searchActive
+                                        ? (contentView.searchModelReady ? contentView.searchPageView : null)
+                                        : contentView.pageView
                                     glassSourceItem: glassControlsSampleSource
                                     glassSampleRevision: root.glassSampleRevision
                                     glassLive: root.glassLiveEnabled
@@ -1252,7 +1282,7 @@ InputEventItem {
                                         cellHeight: baseLayer.iconCellHeight
                                         iconScaleFactor: baseLayer.iconScaleFactor
                                         externalDimProgress: 0
-                                        searchText: footer.searchEdit.text
+                                        searchText: root.requestedSearchText
                                         glassSourceItem: glassControlsSampleSource
                                         glassSampleRevision: root.glassSampleRevision
                                         glassLive: root.glassLiveEnabled
@@ -1267,7 +1297,7 @@ InputEventItem {
 
                                     MouseArea {
                                         anchors.fill: parent
-                                        visible: footer.searchEdit.text !== ""
+                                        visible: root.searchActive
                                                  && contentView.searchResultCount <= 0
                                                  && !folderGridViewPopup.visible
                                         enabled: visible
@@ -1481,8 +1511,8 @@ InputEventItem {
         ToolButton {
             id: previousPageButton
             objectName: "previousPageButton"
-            readonly property var targetPageView: footer.searchEdit.text !== ""
-                ? contentView.searchPageView
+            readonly property var targetPageView: root.searchActive
+                ? (contentView.searchModelReady ? contentView.searchPageView : null)
                 : contentView.pageView
             readonly property bool folderPagingActive: folderGridViewPopup.visible
                 && folderGridViewPopup.hasFolderPageButtons
@@ -1587,8 +1617,8 @@ InputEventItem {
         ToolButton {
             id: nextPageButton
             objectName: "nextPageButton"
-            readonly property var targetPageView: footer.searchEdit.text !== ""
-                ? contentView.searchPageView
+            readonly property var targetPageView: root.searchActive
+                ? (contentView.searchModelReady ? contentView.searchPageView : null)
                 : contentView.pageView
             readonly property bool folderPagingActive: folderGridViewPopup.visible
                 && folderGridViewPopup.hasFolderPageButtons
@@ -1801,6 +1831,12 @@ InputEventItem {
         case Qt.Key_Down:
         case Qt.Key_Left:
         case Qt.Key_Right:
+            if (root.handleSearchNavigationKey(event.key)) {
+                event.accepted = true
+                return
+            }
+            contentView.pageView.focus = true
+            break
         case Qt.Key_Enter:
         case Qt.Key_Return:
             contentView.pageView.focus = true
@@ -1875,10 +1911,10 @@ InputEventItem {
     }
 
     Connections {
-        target: footer.searchEdit
+        target: SearchFilterProxyModel
 
-        function onTextChanged() {
-            root.requestGlassSnapshotAfterSettled()
+        function onSearchTextChanged() {
+            root.requestGlassSnapshotForSearchState()
         }
     }
 
@@ -1907,9 +1943,11 @@ InputEventItem {
             return
         }
 
-        if (footer.searchEdit.text !== "" || footer.searchEdit.focus !== true) {
-            footer.searchEdit.text = text
-            footer.searchEdit.focus = true
+        if (footer.searchEdit.activeFocus) {
+            return
         }
+
+        footer.searchEdit.forceActiveFocus(Qt.TabFocusReason)
+        footer.searchEdit.text = footer.searchEdit.text + text
     }
 }
