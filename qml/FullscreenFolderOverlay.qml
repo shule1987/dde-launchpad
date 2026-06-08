@@ -81,6 +81,8 @@ FocusScope {
     readonly property real pageButtonSize: 50
     readonly property bool hasFolderPageButtons: currentFolderPageCount > 1
         || (innerItem && innerItem.folderPageCount > 1)
+    readonly property bool hasPreviousFolderPage: innerItem ? innerItem.hasPreviousFolderPage : false
+    readonly property bool hasNextFolderPage: innerItem ? innerItem.hasNextFolderPage : false
     readonly property real previousPageButtonTargetX: targetPanelX - pageButtonSize - 30
     readonly property real nextPageButtonTargetX: targetPanelX + panelWidth + 30
 
@@ -1086,6 +1088,10 @@ FocusScope {
                 opacity: root.contentLayoutReady ? root.contentRevealProgress : 0
 
                 readonly property int folderPageCount: folderPagesView.count
+                readonly property bool hasPreviousFolderPage: folderPagesView.count > 1
+                    && folderPagesView.currentIndex > 0
+                readonly property bool hasNextFolderPage: folderPagesView.count > 1
+                    && folderPagesView.currentIndex < folderPagesView.count - 1
 
                 function decrementFolderPage() {
                     if (folderPagesView.count <= 1 || folderPagesView.currentIndex <= 0) {

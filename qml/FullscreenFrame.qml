@@ -66,6 +66,23 @@ InputEventItem {
             && point.y <= rect.y + rect.height
     }
 
+    function pointInItem(item, point) {
+        if (!item || !item.visible) {
+            return false
+        }
+
+        const itemPoint = item.mapFromItem(root, point.x, point.y)
+        return itemPoint.x >= 0
+            && itemPoint.x <= item.width
+            && itemPoint.y >= 0
+            && itemPoint.y <= item.height
+    }
+
+    function pointInPageTurnButton(point) {
+        return pointInItem(previousPageButton, point)
+            || pointInItem(nextPageButton, point)
+    }
+
     function searchEditRectInCanvas() {
         if (!footer || !footer.searchEdit || !fullscreenCanvas) {
             return Qt.rect(0, 0, 0, 0)
@@ -135,6 +152,11 @@ InputEventItem {
                                    fullscreenCanvas.width, fullscreenCanvas.height)
         if (!pointInRect(position, canvasRect)) {
             LauncherController.visible = false
+            return
+        }
+
+        if (pointInPageTurnButton(position)) {
+            clearPendingGridPress()
             return
         }
 
@@ -1458,11 +1480,22 @@ InputEventItem {
 
         ToolButton {
             id: previousPageButton
+            objectName: "previousPageButton"
             readonly property var targetPageView: footer.searchEdit.text !== ""
                 ? contentView.searchPageView
                 : contentView.pageView
             readonly property bool folderPagingActive: folderGridViewPopup.visible
                 && folderGridViewPopup.hasFolderPageButtons
+            readonly property bool targetCanTurnPage: targetPageView
+                && targetPageView.count > 1
+                && targetPageView.currentIndex > 0
+            readonly property bool canTurnPage: folderPagingActive
+                ? folderGridViewPopup.hasPreviousFolderPage
+                : targetCanTurnPage
+            readonly property bool revealReady: !folderPagingActive
+                || (folderGridViewPopup.contentRevealProgress > 0.98
+                    && folderGridViewPopup.innerItem)
+            readonly property color arrowColor: Qt.rgba(1, 1, 1, 1)
             readonly property real defaultX: 30
             readonly property real folderTargetX: folderGridViewPopup.previousPageButtonTargetX
             readonly property real moveProgress: folderGridViewPopup.visible
@@ -1477,38 +1510,36 @@ InputEventItem {
             z: folderGridViewPopup.visible ? 110 : 10
             width: 50
             height: 50
-            hoverEnabled: true
+            opacity: enabled ? 1 : 0.38
+            hoverEnabled: enabled
             visible: folderPagingActive
                      || (targetPageView
                          && targetPageView.count > 1
                          && !folderGridViewPopup.visible)
-            enabled: visible
-                     && (!folderPagingActive
-                         || (folderGridViewPopup.contentRevealProgress > 0.98
-                             && folderGridViewPopup.innerItem))
+            enabled: visible && revealReady && canTurnPage
             display: AbstractButton.IconOnly
             icon.name: "go-previous"
-            icon.width: 20
-            icon.height: 20
-            icon.color: "#FFFFFFFF"
+            icon.width: 16
+            icon.height: 16
+            icon.color: arrowColor
             contentItem: Item {
                 anchors.fill: parent
 
                 Canvas {
                     anchors.centerIn: parent
-                    width: 20
-                    height: 20
+                    width: 16
+                    height: 16
                     onPaint: {
                         const ctx = getContext("2d")
                         ctx.clearRect(0, 0, width, height)
-                        ctx.strokeStyle = "#FFFFFFFF"
-                        ctx.lineWidth = 2.2
+                        ctx.strokeStyle = previousPageButton.arrowColor
+                        ctx.lineWidth = 2
                         ctx.lineCap = "round"
                         ctx.lineJoin = "round"
                         ctx.beginPath()
-                        ctx.moveTo(12.5, 5)
-                        ctx.lineTo(7.5, 10)
-                        ctx.lineTo(12.5, 15)
+                        ctx.moveTo(10, 4)
+                        ctx.lineTo(6, 8)
+                        ctx.lineTo(10, 12)
                         ctx.stroke()
                     }
                 }
@@ -1520,11 +1551,27 @@ InputEventItem {
                 live: root.glassLiveEnabled
                 effectEnabled: root.glassEffectEnabled
                 textureScale: root.glassSampleTextureScale
-                brightness: previousPageButton.down ? -0.1 : previousPageButton.hovered ? 0.2 : 0.0
-                tintColor: Qt.rgba(1, 1, 1, previousPageButton.down ? 0.16 : previousPageButton.hovered ? 0.12 : 0.08)
-                borderColor: Qt.rgba(1, 1, 1, 0.12)
+                brightness: previousPageButton.enabled
+                    ? (previousPageButton.down ? -0.1 : previousPageButton.hovered ? 0.2 : 0.0)
+                    : -0.12
+                saturation: previousPageButton.enabled ? 1.0 : 0.65
+                tintColor: Qt.rgba(1, 1, 1,
+                                    previousPageButton.enabled
+                                    ? (previousPageButton.down ? 0.16 : previousPageButton.hovered ? 0.12 : 0.08)
+                                    : 0.015)
+                borderColor: Qt.rgba(1, 1, 1, previousPageButton.enabled ? 0.12 : 0.03)
+            }
+
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 120 * LauncherController.animationSpeedScale
+                    easing.type: Easing.OutCubic
+                }
             }
             onClicked: {
+                if (!canTurnPage) {
+                    return
+                }
                 if (folderPagingActive) {
                     folderGridViewPopup.decrementFolderPage()
                     return
@@ -1539,11 +1586,22 @@ InputEventItem {
 
         ToolButton {
             id: nextPageButton
+            objectName: "nextPageButton"
             readonly property var targetPageView: footer.searchEdit.text !== ""
                 ? contentView.searchPageView
                 : contentView.pageView
             readonly property bool folderPagingActive: folderGridViewPopup.visible
                 && folderGridViewPopup.hasFolderPageButtons
+            readonly property bool targetCanTurnPage: targetPageView
+                && targetPageView.count > 1
+                && targetPageView.currentIndex < targetPageView.count - 1
+            readonly property bool canTurnPage: folderPagingActive
+                ? folderGridViewPopup.hasNextFolderPage
+                : targetCanTurnPage
+            readonly property bool revealReady: !folderPagingActive
+                || (folderGridViewPopup.contentRevealProgress > 0.98
+                    && folderGridViewPopup.innerItem)
+            readonly property color arrowColor: Qt.rgba(1, 1, 1, 1)
             readonly property real defaultX: parent.width - width - 30
             readonly property real folderTargetX: folderGridViewPopup.nextPageButtonTargetX
             readonly property real moveProgress: folderGridViewPopup.visible
@@ -1558,38 +1616,36 @@ InputEventItem {
             z: folderGridViewPopup.visible ? 110 : 10
             width: 50
             height: 50
-            hoverEnabled: true
+            opacity: enabled ? 1 : 0.38
+            hoverEnabled: enabled
             visible: folderPagingActive
                      || (targetPageView
                          && targetPageView.count > 1
                          && !folderGridViewPopup.visible)
-            enabled: visible
-                     && (!folderPagingActive
-                         || (folderGridViewPopup.contentRevealProgress > 0.98
-                             && folderGridViewPopup.innerItem))
+            enabled: visible && revealReady && canTurnPage
             display: AbstractButton.IconOnly
             icon.name: "go-next"
-            icon.width: 20
-            icon.height: 20
-            icon.color: "#FFFFFFFF"
+            icon.width: 16
+            icon.height: 16
+            icon.color: arrowColor
             contentItem: Item {
                 anchors.fill: parent
 
                 Canvas {
                     anchors.centerIn: parent
-                    width: 20
-                    height: 20
+                    width: 16
+                    height: 16
                     onPaint: {
                         const ctx = getContext("2d")
                         ctx.clearRect(0, 0, width, height)
-                        ctx.strokeStyle = "#FFFFFFFF"
-                        ctx.lineWidth = 2.2
+                        ctx.strokeStyle = nextPageButton.arrowColor
+                        ctx.lineWidth = 2
                         ctx.lineCap = "round"
                         ctx.lineJoin = "round"
                         ctx.beginPath()
-                        ctx.moveTo(7.5, 5)
-                        ctx.lineTo(12.5, 10)
-                        ctx.lineTo(7.5, 15)
+                        ctx.moveTo(6, 4)
+                        ctx.lineTo(10, 8)
+                        ctx.lineTo(6, 12)
                         ctx.stroke()
                     }
                 }
@@ -1601,11 +1657,27 @@ InputEventItem {
                 live: root.glassLiveEnabled
                 effectEnabled: root.glassEffectEnabled
                 textureScale: root.glassSampleTextureScale
-                brightness: nextPageButton.down ? -0.1 : nextPageButton.hovered ? 0.2 : 0.0
-                tintColor: Qt.rgba(1, 1, 1, nextPageButton.down ? 0.16 : nextPageButton.hovered ? 0.12 : 0.08)
-                borderColor: Qt.rgba(1, 1, 1, 0.12)
+                brightness: nextPageButton.enabled
+                    ? (nextPageButton.down ? -0.1 : nextPageButton.hovered ? 0.2 : 0.0)
+                    : -0.12
+                saturation: nextPageButton.enabled ? 1.0 : 0.65
+                tintColor: Qt.rgba(1, 1, 1,
+                                    nextPageButton.enabled
+                                    ? (nextPageButton.down ? 0.16 : nextPageButton.hovered ? 0.12 : 0.08)
+                                    : 0.015)
+                borderColor: Qt.rgba(1, 1, 1, nextPageButton.enabled ? 0.12 : 0.03)
+            }
+
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 120 * LauncherController.animationSpeedScale
+                    easing.type: Easing.OutCubic
+                }
             }
             onClicked: {
+                if (!canTurnPage) {
+                    return
+                }
                 if (folderPagingActive) {
                     folderGridViewPopup.incrementFolderPage()
                     return
